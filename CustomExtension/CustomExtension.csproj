@@ -45,11 +45,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="TestCompletionHandlerProvider.cs" />
-    <Compile Include="TextCompletionSourceProvider.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="CustomExtensionPackage.cs" />
-    <Compile Include="TestCompletionSource.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="CompletionManager.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="source.extension.vsixmanifest">
@@ -57,37 +55,22 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="System" />
-    <Reference Include="System.ComponentModel.Composition" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="System.Xaml" />
-    <Reference Include="System.Xml" />
-    <Reference Include="WindowsBase" />
-  </ItemGroup>
-  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.ComponentModelHost">
+      <Version>17.4.255</Version>
+    </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Editor">
       <Version>17.4.255</Version>
     </PackageReference>
+    <PackageReference Include="Microsoft.VisualStudio.Interop">
+      <Version>17.4.33103.184</Version>
+    </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Language.Intellisense">
       <Version>17.4.255</Version>
-    </PackageReference>
-    <PackageReference Include="Microsoft.VisualStudio.OLE.Interop">
-      <Version>17.4.33103.184</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.4.33103.184" ExcludeAssets="runtime">
       <IncludeAssets>compile; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Shell.15.0">
-      <Version>17.4.33103.184</Version>
-    </PackageReference>
-    <PackageReference Include="Microsoft.VisualStudio.Shell.Immutable.10.0">
-      <Version>16.10.31321.278</Version>
-    </PackageReference>
-    <PackageReference Include="Microsoft.VisualStudio.TextManager.Interop">
       <Version>17.4.33103.184</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.5.4065">
