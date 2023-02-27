@@ -48,6 +48,11 @@ namespace CustomExtension
 
         public Task<FilteredCompletionModel> UpdateCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionDataSnapshot data, CancellationToken token)
         {
+            return Task.Run(() => UpdateCompletionList(session, data, token));
+        }
+
+        public FilteredCompletionModel UpdateCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionDataSnapshot data, CancellationToken token)
+        {
             var potentialSuggestions = data.InitialSortedItemList;
             int n_suggestion = potentialSuggestions.Count;
             var suggestions = new CompletionItemWithHighlight[n_suggestion];
@@ -81,7 +86,7 @@ namespace CustomExtension
                 immutableSuggestions,
                 0
             );
-            return Task.FromResult(result);
+            return result;
         }
 
         struct InitialComparer : IComparer<string>
