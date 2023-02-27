@@ -12,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.ComponentModel.Composition;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO.Pipelines;
 using System.Linq;
@@ -29,10 +30,7 @@ namespace CustomExtension
     {
         public IAsyncCompletionItemManager GetOrCreate(ITextView textView)
         {
-            return new VSCodeLikeAsyncCompletionManager
-            {
-                textView = textView
-            };
+            return new VSCodeLikeAsyncCompletionManager(textView);
         }
     }
 
@@ -41,6 +39,20 @@ namespace CustomExtension
         internal ITextView textView;
         internal CompletionItemWithHighlight[] suggestions;
         internal int[] scores;
+
+        [Import]
+        IAsyncCompletionBroker completionBroker;
+
+        public VSCodeLikeAsyncCompletionManager(ITextView textView)
+        {
+            this.textView = textView;
+            //completionBroker.CompletionTriggered += MakeHardSelection;
+        }
+
+        private void MakeHardSelection(object sender, CompletionTriggeredEventArgs e)
+        {
+            throw new NotImplementedException();
+        }
 
         public Task<ImmutableArray<CompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
         {
@@ -59,6 +71,9 @@ namespace CustomExtension
                 scores = new int[result.Length];
             }
 
+            // Manual update to hard-select top entry.
+            session.OpenOrUpdate(data.Trigger, session.ApplicableToSpan.GetStartPoint(data.Snapshot), token);
+            
             return result;
         }
 
@@ -101,10 +116,10 @@ namespace CustomExtension
                 0,
                 data.SelectedFilters,
                 UpdateSelectionHint.Selected,
-                centerSelection: true,
+                centerSelection: false,
                 null
             );
-            //token.ThrowIfCancellationRequested();
+            token.ThrowIfCancellationRequested();
             return result;
         }
 
@@ -171,7 +186,7 @@ namespace CustomExtension
             }
 
             matchedSpans = spans.ToImmutableArray();
-            return true;
+            return false;
         }
     }
 }
