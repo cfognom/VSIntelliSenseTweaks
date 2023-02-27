@@ -6,12 +6,14 @@ using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.Text.Operations;
+using Microsoft.VisualStudio.TextManager.Interop;
 using Microsoft.VisualStudio.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.ComponentModel.Composition;
 using System.Globalization;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -37,13 +39,27 @@ namespace CustomExtension
     internal class VSCodeLikeAsyncCompletionManager : IAsyncCompletionItemManager
     {
         internal ITextView textView;
+        internal CompletionItemWithHighlight[] suggestions;
+        internal int[] scores;
 
         public Task<ImmutableArray<CompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
+        {
+            return Task.Run(() => SortCompletionList(session, data, token));
+        }
+
+        public ImmutableArray<CompletionItem> SortCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
         {
             var result = data.InitialItemList
                 .OrderBy(x => x.SortText, new InitialComparer())
                 .ToImmutableArray();
-            return Task.FromResult(result);
+
+            if (suggestions == null || suggestions.Length != result.Length)
+            {
+                suggestions = new CompletionItemWithHighlight[result.Length];
+                scores = new int[result.Length];
+            }
+
+            return result;
         }
 
         public Task<FilteredCompletionModel> UpdateCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionDataSnapshot data, CancellationToken token)
@@ -55,8 +71,6 @@ namespace CustomExtension
         {
             var potentialSuggestions = data.InitialSortedItemList;
             int n_suggestion = potentialSuggestions.Count;
-            var suggestions = new CompletionItemWithHighlight[n_suggestion];
-            var scores = new int[n_suggestion];
             var currentText = session.ApplicableToSpan.GetText(data.Snapshot).AsSpan();
             int successCount = 0;
             for (int i = 0; i < n_suggestion; i++)
@@ -84,8 +98,13 @@ namespace CustomExtension
             var result = new FilteredCompletionModel
             (
                 immutableSuggestions,
-                0
+                0,
+                data.SelectedFilters,
+                UpdateSelectionHint.Selected,
+                centerSelection: true,
+                null
             );
+            //token.ThrowIfCancellationRequested();
             return result;
         }
 
