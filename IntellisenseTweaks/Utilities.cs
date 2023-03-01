@@ -15,12 +15,14 @@ namespace IntellisenseTweaks
             TextSpan textSpan = new TextSpan();
 
             var startPoint = span.Start;
-            textSpan.iStartIndex = startPoint.Position;
-            textSpan.iStartLine = startPoint.GetContainingLineNumber();
+            var startLine = startPoint.GetContainingLine();
+            textSpan.iStartIndex = startPoint.Position - startLine.Start.Position;
+            textSpan.iStartLine = startLine.LineNumber;
 
             var endPoint = span.End;
-            textSpan.iEndIndex = endPoint.Position;
-            textSpan.iEndLine = endPoint.GetContainingLineNumber();
+            var endLine = endPoint.GetContainingLine();
+            textSpan.iEndIndex = endPoint.Position - endLine.Start.Position;
+            textSpan.iEndLine = endLine.LineNumber;
 
             return textSpan;
         }
