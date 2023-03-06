@@ -1,7 +1,9 @@
-﻿using Microsoft;
+﻿using EnvDTE;
+using Microsoft;
 using Microsoft.VisualStudio.Language.Intellisense;
 using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion;
 using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Data;
+using Microsoft.VisualStudio.OLE.Interop;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Text;
@@ -10,15 +12,21 @@ using Microsoft.VisualStudio.Text.Operations;
 using Microsoft.VisualStudio.TextManager.Interop;
 using Microsoft.VisualStudio.Utilities;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.ComponentModel.Composition;
+using System.Data.SqlTypes;
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using System.Globalization;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+using System.Runtime.Remoting.Messaging;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,20 +39,21 @@ namespace IntellisenseTweaks
     {
         public IAsyncCompletionItemManager GetOrCreate(ITextView textView)
         {
-            return new CompletionItemManager(textView);
+            return new CompletionItemManager();
         }
     }
 
     internal class CompletionItemManager : IAsyncCompletionItemManager
     {
-        internal struct ScoreAndIndex : IComparable<ScoreAndIndex>
+        private struct CompletionItemKey : IComparable<CompletionItemKey>
         {
             public int score;
             public int index;
+            //public Subwords subwords;
 
-            public int CompareTo(ScoreAndIndex other)
+            public int CompareTo(CompletionItemKey other)
             {
-                int comp = other.score - score;
+                int comp = score - other.score;
                 if (comp == 0) // If score is same, preserve initial ordering.
                 {
                     comp = index - other.index;
@@ -53,19 +62,114 @@ namespace IntellisenseTweaks
             }
         }
 
-        ITextView textView;
+        private struct Subword
+        {
+            public int startIndex;
+            public int length;
+
+            public ReadOnlySpan<char> SliceOf(ReadOnlySpan<char> word)
+            {
+                return word.Slice(startIndex, length);
+            }
+        }
+
+        private struct Subwords
+        {
+            public int startIndex; // Start index in subwordBeginnings array.
+            public int length; // Length in subwordBeginnings array.
+
+            public void GetSubwords(ReadOnlySpan<char> word, List<byte> subwordBeginnings, Span<Subword> subwords)
+            {
+                Debug.Assert(subwords.Length == length);
+                for (int i = 0; i < length; i++)
+                {
+                    int subwordStart = subwordBeginnings[startIndex + i];
+                    int subwordStop = i + 1 == length ? word.Length : subwordBeginnings[startIndex + i + 1];
+
+                    subwords[i] = new Subword
+                    {
+                        startIndex = subwordStart,
+                        length = subwordStop - subwordStart
+                    };
+                }
+            }
+        }
+
+        const int filterMaxLength = 256;
+
         CompletionItemWithHighlight[] filteredCompletions;
-        ScoreAndIndex[] keys;
-        int matchCount;
+        CompletionItemKey[] completionKeys;
+        Subwords[] subwords;
+        List<byte> subwordBeginnings;
+
         FilteredCompletionModel completionModel;
+
+        int matchCount;
+
         Task<FilteredCompletionModel> updateTask;
 
-        [Import]
-        IAsyncCompletionBroker completionBroker;
-
-        public CompletionItemManager(ITextView textView)
+        internal struct CharKind
         {
-            this.textView = textView;
+            private const byte isLetter = 1;
+            private const byte isUpper  = 2;
+
+            internal byte flags;
+
+            public CharKind(char c)
+            {
+                this.flags = default;
+                flags |= char.IsLetter(c) ? isLetter : default;
+                flags |= char.IsUpper(c)  ? isUpper  : default;
+            }
+
+            public bool IsLetter => (flags & isLetter) != 0;
+            public bool IsUpper  => (flags & isUpper)  != 0;
+
+        }
+
+        private void PerformInitialAllocations(int n_completions)
+        {
+            Debug.Assert(filteredCompletions == null); // Check that we did not allocate already.
+            this.filteredCompletions = new CompletionItemWithHighlight[n_completions];
+            this.completionKeys      = new CompletionItemKey[n_completions];
+            //this.subwords            = new Subwords[n_completions];
+            //this.subwordBeginnings   = new List<byte>(n_completions * 8); // Initial guess of 8 subwords per completion.
+        }
+
+        private void DetermineSubwords(ImmutableArray<CompletionItem> completions)
+        {
+            Span<CharKind> charKinds = stackalloc CharKind[filterMaxLength];
+            for (int i = 0; i < completions.Length; i++)
+            {
+                var word = completions[i].FilterText.AsSpan(0, filterMaxLength);
+                subwords[i] = DetermineSubwords(word, charKinds, subwordBeginnings);
+            }
+        }
+        private static Subwords DetermineSubwords(ReadOnlySpan<char> word, Span<CharKind> charKinds, List<byte> subwordBeginnings)
+        {
+            var subwords = new Subwords { startIndex = subwordBeginnings.Count };
+            int n_chars = word.Length;
+
+            for (int i = 0; i < n_chars; i++)
+            {
+                charKinds[i] = new CharKind(word[i]);
+            }
+
+            for (int i = 0; i < n_chars; i++)
+            {
+                bool isSubwordBeginning = i == 0
+                  || (!charKinds[i - 1].IsUpper  && charKinds[i].IsUpper)
+                  || (!charKinds[i - 1].IsLetter && charKinds[i].IsLetter)
+                  || (i + 1 < n_chars && charKinds[i].IsUpper && !charKinds[i + 1].IsUpper);
+
+                if (isSubwordBeginning)
+                {
+                    subwordBeginnings.Add((byte)i);
+                    subwords.length += 1;
+                }
+            }
+
+            return subwords;
         }
 
         public Task<ImmutableArray<CompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
@@ -81,23 +185,20 @@ namespace IntellisenseTweaks
 
         public ImmutableArray<CompletionItem> SortCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
         {
-            var initialCompletions = data.InitialItemList;
-            int n_completions = initialCompletions.Count;
+            var completions = data.InitialItemList;
+            int n_completions = completions.Count;
 
-            Debug.Assert(filteredCompletions == null);
-            //builder = ImmutableArray.CreateBuilder<CompletionItemWithHighlight>(result.Length);
-            filteredCompletions = new CompletionItemWithHighlight[n_completions];
-            keys = new ScoreAndIndex[n_completions];
+            PerformInitialAllocations(n_completions);
 
             var builder = ImmutableArray.CreateBuilder<CompletionItem>(n_completions);
             for (int i = 0; i < n_completions; i++)
             {
-                builder.Add(initialCompletions[i]);
+                builder.Add(completions[i]);
             }
             builder.Sort(new InitialComparer());
             var initialSortedItems = builder.MoveToImmutable();
 
-
+            //DetermineSubwords(initialSortedItems);
             
 //#if !DEBUG
 //            // Manual update to hard-select top entry.
@@ -132,7 +233,7 @@ namespace IntellisenseTweaks
             bool hasPattern = pattern.Length > 0;
             if (hasPattern)
             {
-                var scorer = new WordScorer(pattern);
+                var scorer = new WordScorer(pattern.AsSpan(0, Math.Min(pattern.Length, filterMaxLength)));
                 matchCount = 0;
                 for (int i = 0; i < n_completions; i++)
                 {
@@ -142,12 +243,12 @@ namespace IntellisenseTweaks
                     if (wordScore > 0)
                     {
                         filteredCompletions[matchCount] = new CompletionItemWithHighlight(completion, matchedSpans);
-                        keys[matchCount] = new ScoreAndIndex { score = wordScore, index = i };
+                        completionKeys[matchCount] = new CompletionItemKey { score = wordScore, index = i };
                         matchCount++;
                     }
                 }
 
-                Array.Sort(keys, filteredCompletions, 0, matchCount);
+                Array.Sort(completionKeys, filteredCompletions, 0, matchCount);
             }
             else
             {
@@ -194,97 +295,133 @@ namespace IntellisenseTweaks
         public ref struct WordScorer
         {
             ReadOnlySpan<char> pattern;
-            ReadOnlySpan<char> word;
-            ScoredSpan staged;
-            int wordScore;
-            int tempSpansCount;
+            List<Span> stack;
             Span[] tempSpans;
 
-            public WordScorer(string pattern)
+            public WordScorer(ReadOnlySpan<char> pattern)
             {
                 Debug.Assert(pattern != null && pattern.Length > 0);
-                this.pattern = pattern.AsSpan();
-                this.word = default;
-                this.staged = default;
-                this.wordScore = default;
-                this.tempSpansCount = default;
+                this.pattern = pattern;
+                this.stack = new List<Span>(64);
                 this.tempSpans = new Span[pattern.Length];
             }
 
             public int ScoreWord(ReadOnlySpan<char> word, out ImmutableArray<Span> matchedSpans)
             {
-                this.word = word;
-                this.staged = default;
-                this.wordScore = 0;
-                this.tempSpansCount = 0;
-
-                var current = new ScoredSpan { start = -1 };
-                int previousSpanEnd = 0;
-                for (int i = 0, j = 0; i < word.Length; i++)
+                matchedSpans = Recurse(new State
                 {
-                    int charScore = GetCharScore(word[i], pattern[j]);
-                    if (charScore > 0) // Char match.
-                    {
-                        //if (i == 0) wordScore += 1; // First char bonus.
-                        if (current.start == -1) // Start span if there is none.
-                        {
-                            current.start = i;
-                            current.frontGap = i - previousSpanEnd;
-                        }
+                    pattern = this.pattern,
+                    word = word,
+                    wordPosition = 0,
+                    tempSpansCount = 0
+                });
+                if (matchedSpans.IsDefault) return 0;
 
-                        current.charScore += charScore;
-                        j++;
-
-                        if (j == pattern.Length)  // Matched all chars in pattern, end final span.
-                        {
-                            current.length = i + 1 - current.start;
-                            PushSpan(current);
-                            PushStagedSpan(); // Make sure staged span is included before we build array.
-                            matchedSpans = ImmutableArray.Create(tempSpans, 0, tempSpansCount);
-                            return wordScore;
-                        }
-                    }
-                    else // No char match.
-                    {
-                        if (current.start != -1) // End span if its open.
-                        {
-                            current.length = i - current.start;
-                            PushSpan(current);
-                            current.charScore = 0;
-                            current.start = -1;
-                            previousSpanEnd = i;
-                        }
-                    }
-                }
-
-                // Not all chars in pattern were matched.
-                matchedSpans = ImmutableArray<Span>.Empty;
-                return 0;
+                return CalculateScore(matchedSpans);
             }
 
-            void PushSpan(in ScoredSpan pushed)
+            private ref struct State
             {
-                int mergedStart = pushed.start - staged.length;
-                bool canMergeStagedSpan = word.Slice(staged.start, staged.length)
-                    .SequenceEqual(word.Slice(mergedStart, staged.length));
-                if (canMergeStagedSpan)
+                public ReadOnlySpan<char> pattern;
+                public ReadOnlySpan<char> word;
+                public int wordPosition;
+                public int tempSpansCount;
+            }
+
+            // take first char in pattern
+            // find that char in word and note position in list
+            // for each position try to fit pattern, add length of fit to list
+            // pick position that fits most of pattern
+            // if no fit go back and pick next best item in list.
+            // reduce pattern, repeat (recursive)
+            private ImmutableArray<Span> Recurse(State state)
+            {
+                int i_final = state.word.Length - state.pattern.Length;
+                int sortIndex = stack.Count;
+                int sortCount = 0;
+                for (int i = 0; i <= i_final; i++)
                 {
-                    staged.start = mergedStart;
-                    staged.length += pushed.length;
-                    staged.charScore += pushed.charScore;
-                    staged.frontGap += pushed.frontGap;
+                    var slice = state.word.Slice(i);
+                    int matchCount = TryMatch(slice, state.pattern);
+                    if (matchCount > 0)
+                    {
+                        var matchSpan = new Span(state.wordPosition + i, matchCount);
+                        if (matchCount == state.pattern.Length)
+                        {
+                            tempSpans[state.tempSpansCount++] = matchSpan;
+                            return ImmutableArray.Create(tempSpans, 0, state.tempSpansCount);
+                        }
+                        stack.Add(matchSpan);
+                        sortCount++;
+                    }
                 }
-                else
+
+                stack.Sort(sortIndex, sortCount, new SpanComparer());
+
+                while (stack.Count > sortIndex)
                 {
-                    PushStagedSpan();
-                    staged = pushed;
+                    var popped = Pop(stack);
+
+                    tempSpans[state.tempSpansCount] = popped;
+                    int nextWordPosition = popped.End;
+                    int localNextWordPosition = nextWordPosition - state.wordPosition;
+                    var matchedSpans = Recurse(new State
+                    {
+                        pattern = state.pattern.Slice(popped.Length),
+                        word = state.word.Slice(localNextWordPosition),
+                        wordPosition = nextWordPosition,
+                        tempSpansCount = state.tempSpansCount + 1
+                    });
+                    if (!matchedSpans.IsDefault) return matchedSpans;
+                }
+
+                return default;
+
+                Span Pop(List<Span> stack)
+                {
+                    int lastIndex = stack.Count - 1;
+                    var popped = stack[lastIndex];
+                    stack.RemoveAt(lastIndex);
+                    return popped;
                 }
             }
 
-            void PushStagedSpan()
+            private int TryMatch(ReadOnlySpan<char> word, ReadOnlySpan<char> pattern, BitArray isSubWordStart = default)
             {
-                wordScore += CalculateSpanScore(staged);
-                tempSpans[tempSpansCount++] = new Span(staged.start, staged.length);
+                Debug.Assert(word.Length >= pattern.Length);
+                int i = 0;
+                while (i < pattern.Length && char.ToLower(word[i]) == char.ToLower(pattern[i]))
+                {
+                    i++;
+                }
+                return i;
+            }
+
+            private struct SpanComparer : IComparer<Span>
+            {
+                public int Compare(Span x, Span y)
+                {
+                    int comp = y.Length - x.Length;
+                    if (comp == 0)
+                    {
+                        comp = x.Start - y.Start;
+                    }
+                    return comp;
+                }
+            }
+
+            private int CalculateScore(ImmutableArray<Span> spans)
+            {
+                int score = 0;
+                for (int i = 0; i < spans.Length; i++)
+                {
+                    var span = spans[i];
+                    score += span.Start;
+                }
+                const int factor = 1 << 15;
+                Assumes.True(score < factor);
+                score += factor * spans.Length;
+                return score;
             }
 
             private static int GetCharScore(char completionChar, char patternChar)
@@ -295,32 +432,6 @@ namespace IntellisenseTweaks
                     return 1;
                 else
                     return 0;
-            }
-
-            private bool IsSubwordStart(int index)
-            {
-                return index == 0
-                    || (char.IsLower(word[index - 1]) && char.IsUpper(word[index]))
-                    || (!char.IsLetter(word[index - 1]) && char.IsLetter(word[index]))
-                    || (index + 1 < word.Length && char.IsUpper(word[index]) && char.IsLower(word[index + 1]));
-            }
-
-            private int CalculateSpanScore(in ScoredSpan span)
-            {
-                int gapPenalty = Math.Min(span.frontGap, 255);
-                int subwordStartMultiplier = IsSubwordStart(span.start) ? 2 : 1;
-                int lengthScore = 256 * subwordStartMultiplier * (2 * span.charScore - 1);
-                // By making lengthScore a multiple of 256 and keeping gapPenalty under 256,
-                // gap penalty will only be relevant when when lengthScore is same.
-                return lengthScore - gapPenalty;
-            }
-
-            private struct ScoredSpan
-            {
-                public int start;
-                public int length;
-                public int charScore;
-                public int frontGap;
             }
         }
     }
