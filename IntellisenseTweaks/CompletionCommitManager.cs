@@ -18,6 +18,7 @@ using Microsoft.VisualStudio.Shell;
 using Microsoft;
 using System.Diagnostics;
 using MSXML;
+using IntellisenseTweaks.Utilities;
 
 namespace IntellisenseTweaks
 {

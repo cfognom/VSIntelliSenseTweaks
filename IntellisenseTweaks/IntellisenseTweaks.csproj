@@ -52,6 +52,7 @@
     <Compile Include="IntellisenseTweaksPackage.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="CompletionItemManager.cs" />
+    <Compile Include="WordScorer.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="source.extension.vsixmanifest">
