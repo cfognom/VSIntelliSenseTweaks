@@ -27,10 +27,10 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.Remoting.Messaging;
 using System.Threading;
 using System.Threading.Tasks;
-using IntellisenseTweaks.Utilities;
+using VSIntelliSenseTweaks.Utilities;
 using System.Collections;
 
-namespace IntellisenseTweaks
+namespace VSIntelliSenseTweaks
 {
     [Export(typeof(IAsyncCompletionItemManagerProvider))]
     [ContentType("CSharp")]

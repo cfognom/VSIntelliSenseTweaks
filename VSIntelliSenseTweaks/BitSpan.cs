@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 
-namespace IntellisenseTweaks.Utilities
+namespace VSIntelliSenseTweaks.Utilities
 {
     public ref struct BitSpan
     {

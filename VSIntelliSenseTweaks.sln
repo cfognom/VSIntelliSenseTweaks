@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.4.33213.308
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntellisenseTweaks", "IntellisenseTweaks\IntellisenseTweaks.csproj", "{18871FA5-713D-42B3-A30E-CE2B86BB3DFE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VSIntelliSenseTweaks", "VSIntelliSenseTweaks\VSIntelliSenseTweaks.csproj", "{18871FA5-713D-42B3-A30E-CE2B86BB3DFE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

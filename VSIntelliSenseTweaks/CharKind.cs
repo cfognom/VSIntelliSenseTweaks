@@ -1,4 +1,4 @@
-﻿namespace IntellisenseTweaks.Utilities
+﻿namespace VSIntelliSenseTweaks.Utilities
 {
     public struct CharKind
     {

@@ -1,4 +1,4 @@
-﻿using IntellisenseTweaks.Utilities;
+﻿using VSIntelliSenseTweaks.Utilities;
 using Microsoft;
 using Microsoft.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Text;
@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 
-namespace IntellisenseTweaks
+namespace VSIntelliSenseTweaks
 {
     public struct WordScorer
     {

@@ -9,7 +9,7 @@ using System.Collections;
 using Microsoft;
 using System.Reflection;
 
-namespace IntellisenseTweaks.Utilities
+namespace VSIntelliSenseTweaks.Utilities
 {
     static class Helpers
     {

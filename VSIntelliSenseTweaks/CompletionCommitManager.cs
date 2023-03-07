@@ -18,9 +18,9 @@ using Microsoft.VisualStudio.Shell;
 using Microsoft;
 using System.Diagnostics;
 using MSXML;
-using IntellisenseTweaks.Utilities;
+using VSIntelliSenseTweaks.Utilities;
 
-namespace IntellisenseTweaks
+namespace VSIntelliSenseTweaks
 {
     //[Export(typeof(IAsyncCompletionCommitManagerProvider))]
     //[ContentType("CSharp")]

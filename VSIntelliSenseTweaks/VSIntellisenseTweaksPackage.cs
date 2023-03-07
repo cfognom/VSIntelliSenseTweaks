@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Task = System.Threading.Tasks.Task;
 
-namespace IntellisenseTweaks
+namespace VSIntelliSenseTweaks
 {
     /// <summary>
     /// This is the class that implements the package exposed by this assembly.
@@ -24,8 +24,8 @@ namespace IntellisenseTweaks
     /// </para>
     /// </remarks>
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
-    [Guid(IntellisenseTweaksPackage.PackageGuidString)]
-    public sealed class IntellisenseTweaksPackage : AsyncPackage
+    [Guid(VSIntelliSenseTweaksPackage.PackageGuidString)]
+    public sealed class VSIntelliSenseTweaksPackage : AsyncPackage
     {
         /// <summary>
         /// CustomExtensionPackage GUID string.
