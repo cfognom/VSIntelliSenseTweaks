@@ -39,6 +39,8 @@ namespace VSIntelliSenseTweaks.Utilities
 
         public T Pop()
         {
+            Debug.Assert(count > 0);
+
             count--;
             return array[count];
         }
