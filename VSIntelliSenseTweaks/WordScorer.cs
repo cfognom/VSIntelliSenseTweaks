@@ -10,6 +10,7 @@ using System.Diagnostics;
 
 namespace VSIntelliSenseTweaks
 {
+    // TODO: Make score from unexpectedness.
     public struct WordScorer
     {
         private struct MatchedSpan
@@ -19,14 +20,14 @@ namespace VSIntelliSenseTweaks
             public bool isSubwordStart;
         }
 
-        List<MatchedSpan> workStack;
+        LightStack<MatchedSpan> workStack;
         MatchedSpan[] stagedSpans;
         //CharKind[] charKinds;
         //BitArray isSubwordStarts;
 
         public WordScorer(int maxWordLength)
         {
-            this.workStack = new List<MatchedSpan>(64);
+            this.workStack = new LightStack<MatchedSpan>(64);
             this.stagedSpans = new MatchedSpan[maxWordLength];
             //this.charKinds = new CharKind[maxWordLength];
             //this.isSubwordStarts = new BitArray(maxWordLength);
@@ -110,7 +111,7 @@ namespace VSIntelliSenseTweaks
         private int Recurse(State state)
         {
             int i_final = state.word.Length - state.pattern.Length;
-            int stackIndex = workStack.Count;
+            int stackIndex = workStack.count;
             int pushCount = 0;
             for (int i = 0; i <= i_final; i++)
             {
@@ -118,16 +119,16 @@ namespace VSIntelliSenseTweaks
                 {
                     var slice = state.word.Slice(i);
                     var matchedSpan = CreateMatchedSpan(state.pattern, slice, state.isSubwordStart, state.wordPosition + i);
-                    workStack.Add(matchedSpan);
+                    workStack.Push(matchedSpan);
                     pushCount++;
                 }
             }
 
-            workStack.Sort(stackIndex, pushCount, new BestSpanLast());
+            Array.Sort(workStack.array, stackIndex, pushCount, new BestSpanLast());
 
-            while (workStack.Count > stackIndex)
+            while (workStack.count > stackIndex)
             {
-                var popped = Pop(workStack);
+                var popped = workStack.Pop();
                 stagedSpans[state.stagedSpansCount] = popped;
 
                 if (popped.span.Length == state.pattern.Length)
@@ -149,14 +150,6 @@ namespace VSIntelliSenseTweaks
             }
 
             return 0;
-
-            MatchedSpan Pop(List<MatchedSpan> stack)
-            {
-                int lastIndex = stack.Count - 1;
-                var popped = stack[lastIndex];
-                stack.RemoveAt(lastIndex);
-                return popped;
-            }
         }
 
         private MatchedSpan CreateMatchedSpan(ReadOnlySpan<char> pattern, ReadOnlySpan<char> word, BitSpan isSubwordStart, int wordPosition)
