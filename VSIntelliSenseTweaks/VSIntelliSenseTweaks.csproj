@@ -45,9 +45,10 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="BitSpan.cs" />
-    <Compile Include="CharKind.cs" />
-    <Compile Include="Helpers.cs" />
+    <Compile Include="Utilities\BitSpan.cs" />
+    <Compile Include="Utilities\CharKind.cs" />
+    <Compile Include="Utilities\LightStack.cs" />
+    <Compile Include="Utilities\Helpers.cs" />
     <Compile Include="CompletionCommitManager.cs" />
     <Compile Include="VSIntellisenseTweaksPackage.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
