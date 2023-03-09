@@ -223,13 +223,13 @@ namespace VSIntelliSenseTweaks
                 disjointness += spanData.isSubwordStart ? 0 : 1;
             }
 
-            Assumes.True(0 <= farness && farness < (1 << 8));
+            Assumes.True(0 <= farness && farness < (1 << 13));
             Assumes.True(0 <= inexactness && inexactness <= (1 << 8));
             Assumes.True(0 <= disjointness && disjointness <= (1 << 8));
 
             int score = (farness      <<  0)
-                        + (inexactness  <<  8)
-                        + (disjointness << (8 + 9));
+                      + (inexactness  <<  13)
+                      + (disjointness << (13 + 9));
 
             Debug.Assert(score > 0);
 
