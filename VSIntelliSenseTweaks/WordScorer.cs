@@ -13,24 +13,13 @@ namespace VSIntelliSenseTweaks
     // TODO: Make score from unexpectedness.
     public struct WordScorer
     {
-        private struct MatchedSpan
-        {
-            public Span span;
-            public short inexactness;
-            public bool isSubwordStart;
-        }
-
         LightStack<MatchedSpan> workStack;
         MatchedSpan[] stagedSpans;
-        //CharKind[] charKinds;
-        //BitArray isSubwordStarts;
 
         public WordScorer(int maxWordLength)
         {
-            this.workStack = new LightStack<MatchedSpan>(64);
+            this.workStack = new LightStack<MatchedSpan>(2048);
             this.stagedSpans = new MatchedSpan[maxWordLength];
-            //this.charKinds = new CharKind[maxWordLength];
-            //this.isSubwordStarts = new BitArray(maxWordLength);
         }
 
         public int ScoreWord(ReadOnlySpan<char> pattern, ReadOnlySpan<char> word, out ImmutableArray<Span> matchedSpans)
@@ -60,7 +49,7 @@ namespace VSIntelliSenseTweaks
                 var builder = ImmutableArray.CreateBuilder<Span>(stagedSpansCount);
                 for (int i = 0; i < stagedSpansCount; i++)
                 {
-                    builder.Add(stagedSpans[i].span);
+                    builder.Add(stagedSpans[i].ToSpan());
                 }
                 matchedSpans = builder.MoveToImmutable();
                 return CalculateScore(stagedSpansCount);
@@ -131,16 +120,16 @@ namespace VSIntelliSenseTweaks
                 var popped = workStack.Pop();
                 stagedSpans[state.stagedSpansCount] = popped;
 
-                if (popped.span.Length == state.pattern.Length)
+                if (popped.Length == state.pattern.Length)
                 {
                     return state.stagedSpansCount + 1;
                 }
 
-                int nextWordPosition = popped.span.End;
+                int nextWordPosition = popped.End;
                 int localNextWordPosition = nextWordPosition - state.wordPosition;
                 var result = Recurse(new State
                 {
-                    pattern = state.pattern.Slice(popped.span.Length),
+                    pattern = state.pattern.Slice(popped.Length),
                     word = state.word.Slice(localNextWordPosition),
                     isSubwordStart = state.isSubwordStart,
                     wordPosition = nextWordPosition,
@@ -167,30 +156,25 @@ namespace VSIntelliSenseTweaks
                 i++;
             }
 
-            return new MatchedSpan
-            {
-                span = new Span(wordPosition, i),
-                inexactness = (short)inexactness,
-                isSubwordStart = isSubwordStart[wordPosition]
-            };
+            return new MatchedSpan(wordPosition, i, inexactness, isSubwordStart[wordPosition]);
         }
 
         private struct BestSpanLast : IComparer<MatchedSpan>
         {
             public int Compare(MatchedSpan x, MatchedSpan y)
             {
-                int comp = (x.isSubwordStart ? 1 : 0) - (y.isSubwordStart ? 1 : 0);
+                int comp = x.IsSubwordStart_AsInt - y.IsSubwordStart_AsInt;
                 if (comp == 0)
                 {
-                    comp = x.span.Length - y.span.Length;
+                    comp = x.Length - y.Length;
                 }
                 if (comp == 0)
                 {
-                    comp = y.inexactness - x.inexactness;
+                    comp = y.Inexactness - x.Inexactness;
                 }
                 if (comp == 0)
                 {
-                    comp = y.span.Start - x.span.Start;
+                    comp = y.Start - x.Start;
                 }
                 return comp;
             }
@@ -218,9 +202,9 @@ namespace VSIntelliSenseTweaks
             for (int i = 0; i < stagedSpansCount; i++)
             {
                 var spanData = stagedSpans[i];
-                farness     += spanData.span.Start;
-                inexactness += spanData.inexactness;
-                disjointness += spanData.isSubwordStart ? 0 : 1;
+                farness     += spanData.Start;
+                inexactness += spanData.Inexactness;
+                disjointness += spanData.IsSubwordStart ? 0 : 1;
             }
 
             Assumes.True(0 <= farness && farness < (1 << 13));
@@ -234,6 +218,37 @@ namespace VSIntelliSenseTweaks
             Debug.Assert(score > 0);
 
             return score;
+        }
+
+        private readonly struct MatchedSpan
+        {
+            readonly short start;
+            readonly byte length;
+            readonly byte inexactnessAndIsSubwordStart;
+
+            const int isSubwordStartMask = 128; // last bit in byte.
+            const int maxInexactness = isSubwordStartMask - 1;
+
+            public int Start => start;
+            public int End => start + length;
+            public int Length => length;
+            public int Inexactness => inexactnessAndIsSubwordStart & maxInexactness;
+            public bool IsSubwordStart => (inexactnessAndIsSubwordStart & isSubwordStartMask) == isSubwordStartMask;
+            public int IsSubwordStart_AsInt => (inexactnessAndIsSubwordStart >> 7);
+
+            public MatchedSpan(int start, int length, int inexactness, bool isSubwordStart)
+            {
+                this.start = (short)start;
+                this.length = (byte)length;
+                Debug.Assert(inexactness <= maxInexactness);
+                int _isSubwordStart = (isSubwordStart ? isSubwordStartMask : 0);
+                this.inexactnessAndIsSubwordStart = (byte)(inexactness | _isSubwordStart);
+            }
+
+            public Span ToSpan()
+            {
+                return new Span(start, length);
+            }
         }
     }
 }
