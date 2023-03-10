@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using VSIntelliSenseTweaks.Utilities;
 using Microsoft.VisualStudio.Text;
+using Microsoft.VisualStudio.Shell.Events;
 
 namespace VSIntelliSenseTweaks
 {
@@ -28,91 +29,22 @@ namespace VSIntelliSenseTweaks
 
     internal class CompletionItemManager : IAsyncCompletionItemManager
     {
-        private struct CompletionItemKey : IComparable<CompletionItemKey>
-        {
-            public int score;
-            public int index;
-            //public Subwords subwords;
-
-            public int CompareTo(CompletionItemKey other)
-            {
-                int comp = score - other.score;
-                if (comp == 0) // If score is same, preserve initial ordering.
-                {
-                    comp = index - other.index;
-                }
-                return comp;
-            }
-        }
-
-        private struct Subword
-        {
-            public int startIndex;
-            public int length;
-
-            public ReadOnlySpan<char> SliceOf(ReadOnlySpan<char> word)
-            {
-                return word.Slice(startIndex, length);
-            }
-        }
-
-        private struct Subwords
-        {
-            public int startIndex; // Start index in subwordBeginnings array.
-            public int length; // Length in subwordBeginnings array.
-
-            public void GetSubwords(ReadOnlySpan<char> word, List<byte> subwordBeginnings, Span<Subword> subwords)
-            {
-                Debug.Assert(subwords.Length == length);
-                for (int i = 0; i < length; i++)
-                {
-                    int subwordStart = subwordBeginnings[startIndex + i];
-                    int subwordStop = i + 1 == length ? word.Length : subwordBeginnings[startIndex + i + 1];
-
-                    subwords[i] = new Subword
-                    {
-                        startIndex = subwordStart,
-                        length = subwordStop - subwordStart
-                    };
-                }
-            }
-        }
-
         const int textFilterMaxLength = 256;
 
         CompletionItemWithHighlight[] eligibleCompletions;
         CompletionItemKey[] eligibleKeys;
         WordScorer scorer;
 
-        private struct Result
-        {
-            public FilteredCompletionModel completionModel;
-            public ITextVersion textVersion;
-        }
-        Result result;
-
         CompletionFilterManager filterManager;
         bool hasFilterManager;
 
-        Task<FilteredCompletionModel> updateTask;
-
-        private void PerformInitialAllocations(int n_completions, int maxCharCount)
+        private void PerformInitialAllocations(int n_completions)
         {
-            //Debug.Assert(filteredCompletions == null); // Check that we did not allocate already.
             this.eligibleCompletions = new CompletionItemWithHighlight[n_completions];
-            this.eligibleKeys      = new CompletionItemKey[n_completions];
-            this.scorer = new WordScorer(maxCharCount);
+            this.eligibleKeys        = new CompletionItemKey[n_completions];
+            this.scorer = new WordScorer(stackInitialCapacity: 4096);
+            this.hasFilterManager = false;
         }
-
-        //private void DetermineSubwords(ImmutableArray<CompletionItem> completions)
-        //{
-        //    Span<CharKind> charKinds = stackalloc CharKind[patternMaxLength];
-        //    for (int i = 0; i < completions.Length; i++)
-        //    {
-        //        var word = completions[i].FilterText.AsSpan(0, patternMaxLength);
-        //        subwords[i] = DetermineSubwords(word, charKinds, subwordBeginnings);
-        //    }
-        //}
 
         public Task<ImmutableArray<CompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
         {
@@ -125,50 +57,34 @@ namespace VSIntelliSenseTweaks
             return sortTask;
         }
 
-        public ImmutableArray<CompletionItem> SortCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
-        {
-            var completions = data.InitialItemList;
-            int n_completions = completions.Count;
-
-            var builder = ImmutableArray.CreateBuilder<CompletionItem>(n_completions);
-            int maxCharCount = 0;
-            for (int i = 0; i < n_completions; i++)
-            {
-                var completion = completions[i];
-                builder.Add(completion);
-                maxCharCount = Math.Max(maxCharCount, completion.FilterText.Length);
-            }
-            builder.Sort(new InitialComparer());
-            var initialSortedItems = builder.MoveToImmutable();
-
-            PerformInitialAllocations(n_completions, maxCharCount);
-
-            this.hasFilterManager = false;
-
-            //DetermineSubwords(initialSortedItems);
-
-            //#if !DEBUG
-            //            // Manual update to hard-select top entry.
-            //            session.OpenOrUpdate(data.Trigger, session.ApplicableToSpan.GetStartPoint(data.Snapshot), token);
-            //#endif
-
-            return initialSortedItems;
-        }
-
         public Task<FilteredCompletionModel> UpdateCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionDataSnapshot data, CancellationToken token)
         {
-            Assumes.True(
-                updateTask == null || updateTask.IsCompleted,
-                "Tried to update completion list while previous update was not completed."
-            );
-
-            updateTask = Task.Factory.StartNew(
+            var updateTask = Task.Factory.StartNew(
                 () => UpdateCompletionList(session, data, token),
                 token,
                 TaskCreationOptions.None,
                 TaskScheduler.Current
             );
             return updateTask;
+        }
+
+        public ImmutableArray<CompletionItem> SortCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
+        {
+            var completions = data.InitialItemList;
+            int n_completions = completions.Count;
+
+            PerformInitialAllocations(n_completions);
+
+            var builder = ImmutableArray.CreateBuilder<CompletionItem>(n_completions);
+            for (int i = 0; i < n_completions; i++)
+            {
+                var completion = completions[i];
+                builder.Add(completion);
+            }
+            builder.Sort(new InitialComparer());
+            var initialSortedItems = builder.MoveToImmutable();
+
+            return initialSortedItems;
         }
 
         public FilteredCompletionModel UpdateCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionDataSnapshot data, CancellationToken token)
@@ -183,7 +99,6 @@ namespace VSIntelliSenseTweaks
             }
             filterManager.UpdateActiveFilters(filterStates);
 
-            int preselectionIndex = -1;
             var textFilter = session.ApplicableToSpan.GetText(data.Snapshot);
             bool hasTextFilter = textFilter.Length > 0;
             int n_eligibleCompletions = 0;
@@ -196,30 +111,19 @@ namespace VSIntelliSenseTweaks
                 AddEligibleCompletionsWithoutTextFilter();
             }
 
-            int selectionIndex = Math.Max(preselectionIndex, 0);
-
-            var currentTextVersion = data.Snapshot.Version;
-            // If we type in a string that do not produce any completions we keep old result.
-            bool keepOldResult = n_eligibleCompletions == 0 && result.textVersion != currentTextVersion;
-            if (keepOldResult) return result.completionModel;
-
-            result = new Result
-            {
-                completionModel = new FilteredCompletionModel
-                (
-                    ImmutableArray.Create(eligibleCompletions, 0, n_eligibleCompletions),
-                    selectionIndex,
-                    filterStates,
-                    hasTextFilter ? UpdateSelectionHint.Selected : UpdateSelectionHint.SoftSelected,
-                    centerSelection: false,
-                    null
-                ),
-                textVersion = currentTextVersion
-            };
+            var result = new FilteredCompletionModel
+            (
+                ImmutableArray.Create(eligibleCompletions, 0, n_eligibleCompletions),
+                0,
+                filterStates,
+                hasTextFilter ? UpdateSelectionHint.Selected : UpdateSelectionHint.SoftSelected,
+                centerSelection: false,
+                null
+            );
 
             Debug.Assert(!token.IsCancellationRequested);
 
-            return result.completionModel;
+            return result;
 
             void AddEligibleCompletionsWithTextFilter()
             {
@@ -231,7 +135,7 @@ namespace VSIntelliSenseTweaks
 
                     var word = completion.FilterText.AsSpan();
                     int wordScore = scorer.ScoreWord(pattern, word, out var matchedSpans);
-                    if (wordScore == 0) continue;
+                    if (wordScore <= 0) continue;
 
                     var filterMask = filterManager.CreateFilterMask(completion.Filters);
                     availableFilters |= filterManager.blacklistFilters & filterMask; // Announce availability.
@@ -240,22 +144,6 @@ namespace VSIntelliSenseTweaks
                     availableFilters |= filterManager.whitelistFilters & filterMask; // Announce availability.
                     if (!filterManager.HasWhitelistedFilter(filterMask)) continue;
 
-                    //completion = new CompletionItem(
-                    //    completion.DisplayText,
-                    //    completion.Source,
-                    //    completion.Icon,
-                    //    completion.Filters,
-                    //    "test",
-                    //    completion.InsertText,
-                    //    completion.SortText,
-                    //    completion.FilterText,
-                    //    completion.AutomationText,
-                    //    completion.AttributeIcons,
-                    //    completion.CommitCharacters,
-                    //    completion.ApplicableToSpan,
-                    //    true,
-                    //    completion.IsPreselected
-                    //);
                     eligibleCompletions[n_eligibleCompletions] = new CompletionItemWithHighlight(completion, matchedSpans);
                     eligibleKeys[n_eligibleCompletions] = new CompletionItemKey { score = wordScore, index = i };
                     n_eligibleCompletions++;
@@ -275,7 +163,6 @@ namespace VSIntelliSenseTweaks
                     var filterMask = filterManager.CreateFilterMask(completion.Filters);
                     if (!filterManager.PassesActiveFilters(filterMask)) continue;
 
-                    if (preselectionIndex == -1 && completion.IsPreselected) preselectionIndex = i;
                     eligibleCompletions[n_eligibleCompletions] = new CompletionItemWithHighlight(completion);
                     n_eligibleCompletions++;
                 }
@@ -299,10 +186,22 @@ namespace VSIntelliSenseTweaks
             public int Compare(CompletionItem x, CompletionItem y)
             {
                 int comp = string.Compare(x.SortText, y.SortText, ignoreCase: false);
-                //if (comp == 0)
-                //{
-                //    comp = string.Compare(x, y, ignoreCase: false);
-                //}
+                return comp;
+            }
+        }
+
+        struct CompletionItemKey : IComparable<CompletionItemKey>
+        {
+            public int score;
+            public int index;
+
+            public int CompareTo(CompletionItemKey other)
+            {
+                int comp = score - other.score;
+                if (comp == 0) // If score is same, preserve initial ordering.
+                {
+                    comp = index - other.index;
+                }
                 return comp;
             }
         }
