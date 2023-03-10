@@ -10,49 +10,40 @@ using System.Diagnostics;
 
 namespace VSIntelliSenseTweaks
 {
-    // TODO: Make score from unexpectedness.
     public struct WordScorer
     {
         LightStack<MatchedSpan> workStack;
-        MatchedSpan[] stagedSpans;
+        PendingResult pendingResult;
 
-        public WordScorer(int maxWordLength)
+        public WordScorer(int stackInitialCapacity = 4096)
         {
-            this.workStack = new LightStack<MatchedSpan>(2048);
-            this.stagedSpans = new MatchedSpan[maxWordLength];
+            this.workStack = new LightStack<MatchedSpan>(stackInitialCapacity);
+            this.pendingResult = default;
         }
 
         public int ScoreWord(ReadOnlySpan<char> pattern, ReadOnlySpan<char> word, out ImmutableArray<Span> matchedSpans)
         {
-            Span<int> ints = stackalloc int[BitSpan.GetRequiredIntCount(word.Length)];
-            var isSubwordStart = new BitSpan(ints);
+            Span<int> subwordData = stackalloc int[BitSpan.GetRequiredIntCount(word.Length)];
+            var isSubwordStart = new BitSpan(subwordData);
             DetermineSubwords(word, isSubwordStart);
 
-            int result = Recurse(new State
+            var state = new State
             {
                 pattern = pattern,
                 word = word,
                 isSubwordStart = isSubwordStart,
                 wordPosition = 0,
-                stagedSpansCount = 0
-            });
+                n_matchedSpans = 0
+            };
 
-
-            if (result == 0)
+            if (Recurse(state))
             {
-                matchedSpans = default;
-                return 0;
+                return pendingResult.Finalize(out matchedSpans);
             }
             else
             {
-                int stagedSpansCount = result;
-                var builder = ImmutableArray.CreateBuilder<Span>(stagedSpansCount);
-                for (int i = 0; i < stagedSpansCount; i++)
-                {
-                    builder.Add(stagedSpans[i].ToSpan());
-                }
-                matchedSpans = builder.MoveToImmutable();
-                return CalculateScore(stagedSpansCount);
+                matchedSpans = default;
+                return 0;
             }
         }
 
@@ -86,7 +77,7 @@ namespace VSIntelliSenseTweaks
             public ReadOnlySpan<char> word;
             public BitSpan isSubwordStart;
             public int wordPosition;
-            public int stagedSpansCount;
+            public int n_matchedSpans;
         }
 
         // For each position in word try to match pattern.
@@ -97,7 +88,7 @@ namespace VSIntelliSenseTweaks
         // Else, reduce word and pattern and call method again (recursive).
 
         /// <returns> Length of the matched spans array, or 0 if fail. </returns>
-        private int Recurse(State state)
+        private bool Recurse(State state)
         {
             int i_final = state.word.Length - state.pattern.Length;
             int stackIndex = workStack.count;
@@ -117,28 +108,34 @@ namespace VSIntelliSenseTweaks
 
             while (workStack.count > stackIndex)
             {
-                var popped = workStack.Pop();
-                stagedSpans[state.stagedSpansCount] = popped;
+                var bestSpan = workStack.Pop();
 
-                if (popped.Length == state.pattern.Length)
+                if (bestSpan.Length == state.pattern.Length)
                 {
-                    return state.stagedSpansCount + 1;
+                    // Whole pattern matched.
+                    pendingResult = new PendingResult(state.n_matchedSpans + 1);
+                    pendingResult.AddSpan(state.n_matchedSpans, bestSpan);
+                    return true;
                 }
 
-                int nextWordPosition = popped.End;
+                int nextWordPosition = bestSpan.End;
                 int localNextWordPosition = nextWordPosition - state.wordPosition;
-                var result = Recurse(new State
+                var newState = new State
                 {
-                    pattern = state.pattern.Slice(popped.Length),
+                    pattern = state.pattern.Slice(bestSpan.Length),
                     word = state.word.Slice(localNextWordPosition),
                     isSubwordStart = state.isSubwordStart,
                     wordPosition = nextWordPosition,
-                    stagedSpansCount = state.stagedSpansCount + 1
-                });
-                if (result > 0) return result;
+                    n_matchedSpans = state.n_matchedSpans + 1,
+                };
+                if (Recurse(newState))
+                {
+                    pendingResult.AddSpan(state.n_matchedSpans, bestSpan);
+                    return true;
+                }
             }
 
-            return 0;
+            return false;
         }
 
         private MatchedSpan CreateMatchedSpan(ReadOnlySpan<char> pattern, ReadOnlySpan<char> word, BitSpan isSubwordStart, int wordPosition)
@@ -180,44 +177,55 @@ namespace VSIntelliSenseTweaks
             }
         }
 
-        private int CalculateScore(int stagedSpansCount)
+        struct PendingResult
         {
-            Debug.Assert(stagedSpansCount > 0);
+            private ImmutableArray<Span>.Builder builder;
+            private int farness; // Distance from start;
+            private int inexactness; // Number of non-exact char matches.
+            private int disjointness; // Number of spans.
 
-            int farness; // Distance from start;
-            int inexactness; // Number of non-exact char matches.
-            int disjointness; // Number of spans.
-
-            farness = -CalculateMinFarness();
-            int CalculateMinFarness()
+            public PendingResult(int n_matchedSpans)
             {
-                int v = stagedSpansCount - 1;
-                return (v * v + v) / 2;
+                Debug.Assert(n_matchedSpans > 0);
+
+                this.builder = ImmutableArray.CreateBuilder<Span>(n_matchedSpans);
+                builder.Count = builder.Capacity;
+                this.farness = 0;
+                this.inexactness = 0;
+                this.disjointness = 0;
             }
 
-            inexactness = 0;
-
-            disjointness = stagedSpansCount;
-
-            for (int i = 0; i < stagedSpansCount; i++)
+            public int Finalize(out ImmutableArray<Span> matchedSpans)
             {
-                var spanData = stagedSpans[i];
-                farness     += spanData.Start;
-                inexactness += spanData.Inexactness;
-                disjointness += spanData.IsSubwordStart ? 0 : 1;
+                matchedSpans = builder.MoveToImmutable();
+                return CalculateScore();
             }
 
-            Assumes.True(0 <= farness && farness < (1 << 13));
-            Assumes.True(0 <= inexactness && inexactness <= (1 << 8));
-            Assumes.True(0 <= disjointness && disjointness <= (1 << 8));
+            public void AddSpan(int index, MatchedSpan span)
+            {
+                builder[index] = span.ToSpan();
+                farness      += span.Start;
+                inexactness  += span.Inexactness;
+                disjointness += span.IsSubwordStart ? 1 : 2;
+            }
 
-            int score = (farness      <<  0)
-                      + (inexactness  <<  13)
-                      + (disjointness << (13 + 9));
+            public int CalculateScore()
+            {
+                farness = Math.Min(farness, (1 << 13) - 1);
 
-            Debug.Assert(score > 0);
+                Debug.Assert(0 <= farness      && farness      <  (1 << 13)); // Needs 13 bits
+                Debug.Assert(0 <= inexactness  && inexactness  <= (1 << 8 )); // Needs 9  bits, since it can be equal to 2^8
+                Debug.Assert(1 <= disjointness && disjointness <  (1 << 9 )); // Needs 9  bits
+                                                                              // Total 31 bits (cant use last sign bit)
 
-            return score;
+                int score = (farness      <<  0      )
+                          + (inexactness  <<  13     )
+                          + (disjointness << (13 + 9));
+
+                Debug.Assert(score > 0);
+
+                return score;
+            }
         }
 
         private readonly struct MatchedSpan
