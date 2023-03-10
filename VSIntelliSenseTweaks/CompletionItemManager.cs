@@ -11,8 +11,6 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using VSIntelliSenseTweaks.Utilities;
-using Microsoft.VisualStudio.Text;
-using Microsoft.VisualStudio.Shell.Events;
 
 namespace VSIntelliSenseTweaks
 {

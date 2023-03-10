@@ -1,13 +1,6 @@
 ﻿using Microsoft.VisualStudio.Text;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.VisualStudio.TextManager.Interop;
-using System.Collections;
-using Microsoft;
-using System.Reflection;
+using System;
 
 namespace VSIntelliSenseTweaks.Utilities
 {

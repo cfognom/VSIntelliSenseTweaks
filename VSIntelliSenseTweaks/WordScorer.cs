@@ -1,12 +1,9 @@
-﻿using VSIntelliSenseTweaks.Utilities;
-using Microsoft;
-using Microsoft.VisualStudio.PlatformUI;
-using Microsoft.VisualStudio.Text;
+﻿using Microsoft.VisualStudio.Text;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using VSIntelliSenseTweaks.Utilities;
 
 namespace VSIntelliSenseTweaks
 {
