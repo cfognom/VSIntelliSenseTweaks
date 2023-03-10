@@ -18,7 +18,7 @@ namespace VSIntelliSenseTweaks
 {
     [Export(typeof(IAsyncCompletionItemManagerProvider))]
     [ContentType("CSharp")]
-    [Name("CustomCompletionItemManagerProvider")]
+    [Name("VSIntelliSenseTweaksCompletionItemManagerProvider")]
     internal class CompletionItemManagerProvider : IAsyncCompletionItemManagerProvider
     {
         public IAsyncCompletionItemManager GetOrCreate(ITextView textView)
