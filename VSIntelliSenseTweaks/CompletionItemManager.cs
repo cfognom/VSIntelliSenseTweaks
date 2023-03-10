@@ -185,7 +185,16 @@ namespace VSIntelliSenseTweaks
         {
             public int Compare(CompletionItem x, CompletionItem y)
             {
-                int comp = string.Compare(x.SortText, y.SortText, ignoreCase: false);
+                var a = x.SortText; var b = y.SortText;
+                int comp = 0;
+                if (a.Length > 0 && b.Length > 0)
+                {
+                    comp = (a[0] == '_' ? 1 : 0) - (b[0] == '_' ? 1 : 0);
+                }
+                if (comp == 0)
+                {
+                    comp = string.Compare(a, b, ignoreCase: false);
+                }
                 return comp;
             }
         }
