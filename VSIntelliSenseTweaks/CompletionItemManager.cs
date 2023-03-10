@@ -1,34 +1,17 @@
-﻿using EnvDTE;
-using Microsoft;
-using Microsoft.VisualStudio.Language.Intellisense;
+﻿using Microsoft;
 using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion;
 using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Data;
-using Microsoft.VisualStudio.OLE.Interop;
-using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Text.Editor;
-using Microsoft.VisualStudio.Text.Operations;
-using Microsoft.VisualStudio.TextManager.Interop;
 using Microsoft.VisualStudio.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.ComponentModel.Composition;
-using System.Data.SqlTypes;
 using System.Diagnostics;
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
-using System.Globalization;
-using System.IO.Pipelines;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
-using System.Runtime.Remoting.Messaging;
 using System.Threading;
 using System.Threading.Tasks;
 using VSIntelliSenseTweaks.Utilities;
-using System.Collections;
+using Microsoft.VisualStudio.Text;
 
 namespace VSIntelliSenseTweaks
 {
@@ -43,7 +26,7 @@ namespace VSIntelliSenseTweaks
         }
     }
 
-    internal partial class CompletionItemManager : IAsyncCompletionItemManager
+    internal class CompletionItemManager : IAsyncCompletionItemManager
     {
         private struct CompletionItemKey : IComparable<CompletionItemKey>
         {
@@ -95,24 +78,29 @@ namespace VSIntelliSenseTweaks
             }
         }
 
-        const int patternMaxLength = 256;
+        const int textFilterMaxLength = 256;
 
-        CompletionItemWithHighlight[] filteredCompletions;
-        CompletionItemKey[] completionKeys;
+        CompletionItemWithHighlight[] eligibleCompletions;
+        CompletionItemKey[] eligibleKeys;
         WordScorer scorer;
 
-        FilteredCompletionModel completionModel;
+        private struct Result
+        {
+            public FilteredCompletionModel completionModel;
+            public ITextVersion textVersion;
+        }
+        Result result;
 
-        int maxFilterLength;
-        int matchCount;
+        CompletionFilterManager filterManager;
+        bool hasFilterManager;
 
         Task<FilteredCompletionModel> updateTask;
 
         private void PerformInitialAllocations(int n_completions, int maxCharCount)
         {
-            Debug.Assert(filteredCompletions == null); // Check that we did not allocate already.
-            this.filteredCompletions = new CompletionItemWithHighlight[n_completions];
-            this.completionKeys      = new CompletionItemKey[n_completions];
+            //Debug.Assert(filteredCompletions == null); // Check that we did not allocate already.
+            this.eligibleCompletions = new CompletionItemWithHighlight[n_completions];
+            this.eligibleKeys      = new CompletionItemKey[n_completions];
             this.scorer = new WordScorer(maxCharCount);
         }
 
@@ -142,7 +130,6 @@ namespace VSIntelliSenseTweaks
             var completions = data.InitialItemList;
             int n_completions = completions.Count;
 
-
             var builder = ImmutableArray.CreateBuilder<CompletionItem>(n_completions);
             int maxCharCount = 0;
             for (int i = 0; i < n_completions; i++)
@@ -156,13 +143,15 @@ namespace VSIntelliSenseTweaks
 
             PerformInitialAllocations(n_completions, maxCharCount);
 
+            this.hasFilterManager = false;
+
             //DetermineSubwords(initialSortedItems);
-            
-//#if !DEBUG
-//            // Manual update to hard-select top entry.
-//            session.OpenOrUpdate(data.Trigger, session.ApplicableToSpan.GetStartPoint(data.Snapshot), token);
-//#endif
-            
+
+            //#if !DEBUG
+            //            // Manual update to hard-select top entry.
+            //            session.OpenOrUpdate(data.Trigger, session.ApplicableToSpan.GetStartPoint(data.Snapshot), token);
+            //#endif
+
             return initialSortedItems;
         }
 
@@ -186,55 +175,123 @@ namespace VSIntelliSenseTweaks
         {
             var completions = data.InitialSortedItemList;
             int n_completions = completions.Count;
-            int preselectionIndex = -1;
-            var patternText = session.ApplicableToSpan.GetText(data.Snapshot);
-            bool hasPattern = patternText.Length > 0;
-            if (hasPattern)
-            {
-                var pattern = patternText.AsSpan(0, Math.Min(patternText.Length, patternMaxLength));
-                matchCount = 0;
-                for (int i = 0; i < n_completions; i++)
-                {
-                    var completion = completions[i];
-                    var word = completion.FilterText.AsSpan();
-                    int wordScore = scorer.ScoreWord(pattern, word, out var matchedSpans);
-                    if (wordScore > 0)
-                    {
-                        filteredCompletions[matchCount] = new CompletionItemWithHighlight(completion, matchedSpans);
-                        completionKeys[matchCount] = new CompletionItemKey { score = wordScore, index = i };
-                        matchCount++;
-                    }
-                }
 
-                Array.Sort(completionKeys, filteredCompletions, 0, matchCount);
+            var filterStates = data.SelectedFilters; // The types of filters displayed in the IntelliSense widget.
+            if (!hasFilterManager)
+            {
+                filterManager = new CompletionFilterManager(filterStates);
+            }
+            filterManager.UpdateActiveFilters(filterStates);
+
+            int preselectionIndex = -1;
+            var textFilter = session.ApplicableToSpan.GetText(data.Snapshot);
+            bool hasTextFilter = textFilter.Length > 0;
+            int n_eligibleCompletions = 0;
+            if (hasTextFilter)
+            {
+                AddEligibleCompletionsWithTextFilter();
             }
             else
             {
-                for (int i = 0; i < n_completions; i++)
-                {
-                    var completion = completions[i];
-                    if (preselectionIndex == -1 && completion.IsPreselected) preselectionIndex = i;
-                    filteredCompletions[i] = new CompletionItemWithHighlight(completion);
-                }
-                matchCount = n_completions;
+                AddEligibleCompletionsWithoutTextFilter();
             }
 
             int selectionIndex = Math.Max(preselectionIndex, 0);
 
-            if (matchCount > 0)
+            var currentTextVersion = data.Snapshot.Version;
+            // If we type in a string that do not produce any completions we keep old result.
+            bool keepOldResult = n_eligibleCompletions == 0 && result.textVersion != currentTextVersion;
+            if (keepOldResult) return result.completionModel;
+
+            result = new Result
             {
                 completionModel = new FilteredCompletionModel
                 (
-                    ImmutableArray.Create(filteredCompletions, 0, matchCount),
+                    ImmutableArray.Create(eligibleCompletions, 0, n_eligibleCompletions),
                     selectionIndex,
-                    data.SelectedFilters,
-                    hasPattern ? UpdateSelectionHint.Selected : UpdateSelectionHint.SoftSelected,
+                    filterStates,
+                    hasTextFilter ? UpdateSelectionHint.Selected : UpdateSelectionHint.SoftSelected,
                     centerSelection: false,
                     null
-                );
+                ),
+                textVersion = currentTextVersion
+            };
+
+            Debug.Assert(!token.IsCancellationRequested);
+
+            return result.completionModel;
+
+            void AddEligibleCompletionsWithTextFilter()
+            {
+                var pattern = textFilter.AsSpan(0, Math.Min(textFilter.Length, textFilterMaxLength));
+                BitField64 availableFilters = default;
+                for (int i = 0; i < n_completions; i++)
+                {
+                    var completion = completions[i];
+
+                    var word = completion.FilterText.AsSpan();
+                    int wordScore = scorer.ScoreWord(pattern, word, out var matchedSpans);
+                    if (wordScore == 0) continue;
+
+                    var filterMask = filterManager.CreateFilterMask(completion.Filters);
+                    availableFilters |= filterManager.blacklistFilters & filterMask; // Announce availability.
+                    if (filterManager.HasBlacklistedFilter(filterMask)) continue;
+
+                    availableFilters |= filterManager.whitelistFilters & filterMask; // Announce availability.
+                    if (!filterManager.HasWhitelistedFilter(filterMask)) continue;
+
+                    //completion = new CompletionItem(
+                    //    completion.DisplayText,
+                    //    completion.Source,
+                    //    completion.Icon,
+                    //    completion.Filters,
+                    //    "test",
+                    //    completion.InsertText,
+                    //    completion.SortText,
+                    //    completion.FilterText,
+                    //    completion.AutomationText,
+                    //    completion.AttributeIcons,
+                    //    completion.CommitCharacters,
+                    //    completion.ApplicableToSpan,
+                    //    true,
+                    //    completion.IsPreselected
+                    //);
+                    eligibleCompletions[n_eligibleCompletions] = new CompletionItemWithHighlight(completion, matchedSpans);
+                    eligibleKeys[n_eligibleCompletions] = new CompletionItemKey { score = wordScore, index = i };
+                    n_eligibleCompletions++;
+                }
+
+                Array.Sort(eligibleKeys, eligibleCompletions, 0, n_eligibleCompletions);
+
+                filterStates = UpdateFilterStates(filterStates, availableFilters);
             }
-            token.ThrowIfCancellationRequested();
-            return completionModel;
+
+            void AddEligibleCompletionsWithoutTextFilter()
+            {
+                for (int i = 0; i < n_completions; i++)
+                {
+                    var completion = completions[i];
+
+                    var filterMask = filterManager.CreateFilterMask(completion.Filters);
+                    if (!filterManager.PassesActiveFilters(filterMask)) continue;
+
+                    if (preselectionIndex == -1 && completion.IsPreselected) preselectionIndex = i;
+                    eligibleCompletions[n_eligibleCompletions] = new CompletionItemWithHighlight(completion);
+                    n_eligibleCompletions++;
+                }
+            }
+        }
+
+        private ImmutableArray<CompletionFilterWithState> UpdateFilterStates(ImmutableArray<CompletionFilterWithState> filterStates, BitField64 availableFilters)
+        {
+            var builder = ImmutableArray.CreateBuilder<CompletionFilterWithState>(filterStates.Length);
+            for (int i = 0; i < filterStates.Length; i++)
+            {
+                var filterState = filterStates[i];
+                var filter = filterState.Filter;
+                builder.Add(new CompletionFilterWithState(filter, availableFilters.GetBit(i), filterState.IsSelected));
+            }
+            return builder.MoveToImmutable();
         }
 
         struct InitialComparer : IComparer<CompletionItem>
@@ -247,6 +304,108 @@ namespace VSIntelliSenseTweaks
                 //    comp = string.Compare(x, y, ignoreCase: false);
                 //}
                 return comp;
+            }
+        }
+
+        struct CompletionFilterManager
+        {
+            CompletionFilter[] filters;
+            public readonly BitField64 blacklistFilters;
+            public readonly BitField64 whitelistFilters;
+            BitField64 activeBlacklistFilters;
+            BitField64 activeWhitelistFilters;
+
+            enum CompletionFilterKind
+            {
+                Null, Blacklist, Whitelist
+            }
+
+            public CompletionFilterManager(ImmutableArray<CompletionFilterWithState> filterStates)
+            {
+                Assumes.True(filterStates.Length < 64);
+
+                filters = new CompletionFilter[filterStates.Length];
+                blacklistFilters = default;
+                whitelistFilters = default;
+                activeBlacklistFilters = default;
+                activeWhitelistFilters = default;
+
+                for (int i = 0; i < filterStates.Length; i++)
+                {
+                    var filterState = filterStates[i];
+                    var filter = filterState.Filter;
+                    this.filters[i] = filter;
+                    var filterKind = GetFilterKind(i, filter);
+                    switch (filterKind)
+                    {
+                        case CompletionFilterKind.Blacklist:
+                            blacklistFilters.SetBit(i);
+                            break;
+
+                        case CompletionFilterKind.Whitelist:
+                            whitelistFilters.SetBit(i);
+                            break;
+
+                        default: throw new Exception();
+                    }
+                }
+
+                CompletionFilterKind GetFilterKind(int index, CompletionFilter filter)
+                {
+                    // Is there a safer rule to determine what kind of filter it is?
+                    return index == 0 ? CompletionFilterKind.Blacklist : CompletionFilterKind.Whitelist;
+                }
+            }
+
+            public void UpdateActiveFilters(ImmutableArray<CompletionFilterWithState> filterStates)
+            {
+                Debug.Assert(filterStates.Length == filters.Length);
+
+                BitField64 selectedFilters = default;
+                for (int i = 0; i < filterStates.Length; i++)
+                {
+                    if (filterStates[i].IsSelected)
+                    {
+                        selectedFilters.SetBit(i);
+                    }
+                }
+
+                activeBlacklistFilters = ~selectedFilters & blacklistFilters;
+                activeWhitelistFilters = selectedFilters & whitelistFilters;
+                if (activeWhitelistFilters == default)
+                {
+                    // No active whitelist = everything on whitelist.
+                    activeWhitelistFilters = whitelistFilters;
+                }
+            }
+
+            public BitField64 CreateFilterMask(ImmutableArray<CompletionFilter> completionFilters)
+            {
+                BitField64 mask = default;
+                for (int i = 0; i < completionFilters.Length; i++)
+                {
+                    int index = Array.IndexOf(filters, completionFilters[i]);
+                    Debug.Assert(index >= 0);
+                    mask.SetBit(index);
+                }
+                return mask;
+            }
+
+            public bool HasBlacklistedFilter(BitField64 completionFilters)
+            {
+                bool isOnBlacklist = (activeBlacklistFilters & completionFilters) != default;
+                return isOnBlacklist;
+            }
+
+            public bool HasWhitelistedFilter(BitField64 completionFilters)
+            {
+                bool isOnWhitelist = (activeWhitelistFilters & completionFilters) != default;
+                return isOnWhitelist;
+            }
+
+            public bool PassesActiveFilters(BitField64 completionFilters)
+            {
+                return !HasBlacklistedFilter(completionFilters) && HasWhitelistedFilter(completionFilters);
             }
         }
     }
