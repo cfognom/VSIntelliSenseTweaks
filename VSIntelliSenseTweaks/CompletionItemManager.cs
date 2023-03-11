@@ -187,13 +187,23 @@ namespace VSIntelliSenseTweaks
                 int comp = 0;
                 if (a.Length > 0 && b.Length > 0)
                 {
-                    comp = (a[0] == '_' ? 1 : 0) - (b[0] == '_' ? 1 : 0);
+                    comp = GetUnderscoreCount(a) - GetUnderscoreCount(b);
                 }
                 if (comp == 0)
                 {
                     comp = string.Compare(a, b, ignoreCase: false);
                 }
                 return comp;
+            }
+
+            private int GetUnderscoreCount(string str)
+            {
+                int i = 0;
+                while (i < str.Length && str[i] == '_')
+                {
+                    i++;
+                }
+                return i;
             }
         }
 
