@@ -20,6 +20,8 @@ namespace VSIntelliSenseTweaks
 
         public int ScoreWord(ReadOnlySpan<char> pattern, ReadOnlySpan<char> word, out ImmutableArray<Span> matchedSpans)
         {
+            Debug.Assert(pattern.Length > 0);
+
             Span<int> subwordData = stackalloc int[BitSpan.GetRequiredIntCount(word.Length)];
             var isSubwordStart = new BitSpan(subwordData);
             DetermineSubwords(word, isSubwordStart);
