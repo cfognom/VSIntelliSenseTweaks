@@ -86,7 +86,6 @@ namespace VSIntelliSenseTweaks
         // If popped span covers all of pattern => success.
         // Else, reduce word and pattern and call method again (recursive).
 
-        /// <returns> Length of the matched spans array, or 0 if fail. </returns>
         private bool Recurse(State state)
         {
             int i_final = state.word.Length - state.pattern.Length;
