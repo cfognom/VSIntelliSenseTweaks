@@ -1,4 +1,10 @@
-﻿using Microsoft;
+﻿#if DEBUG
+#define INCLUDE_DEBUG_SUFFIX
+#define DEBUG_TIME
+#endif
+
+using Microsoft;
+using Microsoft.CodeAnalysis.Completion;
 using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion;
 using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Data;
 using Microsoft.VisualStudio.Text.Editor;
@@ -8,9 +14,13 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.ComponentModel.Composition;
 using System.Diagnostics;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using VSIntelliSenseTweaks.Utilities;
+
+using RoslynCompletionItem = Microsoft.CodeAnalysis.Completion.CompletionItem;
+using VSCompletionItem = Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Data.CompletionItem;
 
 namespace VSIntelliSenseTweaks
 {
@@ -31,49 +41,63 @@ namespace VSIntelliSenseTweaks
 
         CompletionItemWithHighlight[] eligibleCompletions;
         CompletionItemKey[] eligibleKeys;
-        WordScorer scorer;
+        WordScorer scorer = new WordScorer(stackInitialCapacity: 4096);
 
         CompletionFilterManager filterManager;
         bool hasFilterManager;
 
-        private void PerformInitialAllocations(int n_completions)
+#if DEBUG_TIME
+        Stopwatch watch = new Stopwatch();
+#endif
+
+        private void EnsureCapacity(int n_completions)
         {
-            this.eligibleCompletions = new CompletionItemWithHighlight[n_completions];
-            this.eligibleKeys        = new CompletionItemKey[n_completions];
-            this.scorer = new WordScorer(stackInitialCapacity: 4096);
+            if (eligibleCompletions == null || n_completions > eligibleCompletions.Length)
+            {
+                this.eligibleCompletions = new CompletionItemWithHighlight[n_completions];
+                this.eligibleKeys        = new CompletionItemKey[n_completions];
+            }
             this.hasFilterManager = false;
         }
 
-        public Task<ImmutableArray<CompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
+        //public Task<CompletionList<VSCompletionItem>> SortCompletionItemListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
+        //{
+        //    var completions = data.InitialItemList;
+        //    int n_completions = completions.Count;
+        //    EnsureCapacity(n_completions);
+        //    var a = session.CreateCompletionList(data.InitialItemList);
+        //    return Task.FromResult(a);
+        //}
+
+        public Task<ImmutableArray<VSCompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
         {
-            var sortTask = Task.Factory.StartNew(
-                () => SortCompletionList(session, data, token),
-                token,
-                TaskCreationOptions.None,
-                TaskScheduler.Current
-            );
+            var sortTask = Task.Factory.StartNew(TaskFunction, token, TaskCreationOptions.None, TaskScheduler.Current);
+
             return sortTask;
+
+            ImmutableArray<VSCompletionItem> TaskFunction() => SortCompletionList(session, data, token);
         }
 
         public Task<FilteredCompletionModel> UpdateCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionDataSnapshot data, CancellationToken token)
         {
-            var updateTask = Task.Factory.StartNew(
-                () => UpdateCompletionList(session, data, token),
-                token,
-                TaskCreationOptions.None,
-                TaskScheduler.Current
-            );
+            var updateTask = Task.Factory.StartNew(TaskFunction, token, TaskCreationOptions.None, TaskScheduler.Current);
+
             return updateTask;
+
+            FilteredCompletionModel TaskFunction() => UpdateCompletionList(session, data, token);
         }
 
-        public ImmutableArray<CompletionItem> SortCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
+        public ImmutableArray<VSCompletionItem> SortCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
         {
+#if DEBUG_TIME
+            watch.Restart();
+#endif
             var completions = data.InitialItemList;
             int n_completions = completions.Count;
 
-            PerformInitialAllocations(n_completions);
+            EnsureCapacity(n_completions);
 
-            var builder = ImmutableArray.CreateBuilder<CompletionItem>(n_completions);
+            var builder = ImmutableArray.CreateBuilder<VSCompletionItem>(n_completions);
             for (int i = 0; i < n_completions; i++)
             {
                 var completion = completions[i];
@@ -82,11 +106,18 @@ namespace VSIntelliSenseTweaks
             builder.Sort(new InitialComparer());
             var initialSortedItems = builder.MoveToImmutable();
 
+#if DEBUG_TIME
+            watch.Stop();
+            Debug.WriteLine($"SortCompletionList ms: {watch.ElapsedMilliseconds}");
+#endif
             return initialSortedItems;
         }
 
         public FilteredCompletionModel UpdateCompletionList(IAsyncCompletionSession session, AsyncCompletionSessionDataSnapshot data, CancellationToken token)
         {
+#if DEBUG_TIME
+            watch.Restart();
+#endif
             var completions = data.InitialSortedItemList;
             int n_completions = completions.Count;
 
@@ -100,30 +131,36 @@ namespace VSIntelliSenseTweaks
             var textFilter = session.ApplicableToSpan.GetText(data.Snapshot);
             bool hasTextFilter = textFilter.Length > 0;
             int n_eligibleCompletions = 0;
-            if (hasTextFilter)
-            {
-                AddEligibleCompletionsWithTextFilter();
-            }
-            else
-            {
-                AddEligibleCompletionsWithoutTextFilter();
-            }
+
+#if DEBUG_TIME
+            Debug.WriteLine($"UpdateCompletionList Before AddEligibleCompletions ms: {watch.ElapsedMilliseconds}");
+#endif
+            AddEligibleCompletions();
+#if DEBUG_TIME
+            Debug.WriteLine($"UpdateCompletionList After AddEligibleCompletions ms: {watch.ElapsedMilliseconds}");
+#endif
+
+            var selectionKind = GetSelectionKind();
 
             var result = new FilteredCompletionModel
             (
-                ImmutableArray.Create(eligibleCompletions, 0, n_eligibleCompletions),
-                0,
-                filterStates,
-                hasTextFilter ? UpdateSelectionHint.Selected : UpdateSelectionHint.SoftSelected,
+                items: ImmutableArray.Create(eligibleCompletions, 0, n_eligibleCompletions),
+                selectedItemIndex: 0,
+                filters: filterStates,
+                selectionHint: selectionKind,
                 centerSelection: false,
-                null
+                uniqueItem: null
             );
 
             Debug.Assert(!token.IsCancellationRequested);
 
+#if DEBUG_TIME
+            Debug.WriteLine($"UpdateCompletionList ms: {watch.ElapsedMilliseconds}");
+            watch.Stop();
+#endif
             return result;
 
-            void AddEligibleCompletionsWithTextFilter()
+            void AddEligibleCompletions()
             {
                 var pattern = textFilter.AsSpan(0, Math.Min(textFilter.Length, textFilterMaxLength));
                 BitField64 availableFilters = default;
@@ -131,19 +168,44 @@ namespace VSIntelliSenseTweaks
                 {
                     var completion = completions[i];
 
-                    var word = completion.FilterText.AsSpan();
-                    int wordScore = scorer.ScoreWord(pattern, word, out var matchedSpans);
-                    if (wordScore <= 0) continue;
+                    int patternScore;
+                    ImmutableArray<Microsoft.VisualStudio.Text.Span> matchedSpans;
+                    if (hasTextFilter)
+                    {
+                        var word = completion.FilterText.AsSpan();
+                        patternScore = scorer.ScoreWord(pattern, word, out matchedSpans);
+                        if (patternScore <= 0) continue;
+                    }
+                    else
+                    {
+                        patternScore = 0;
+                        matchedSpans = ImmutableArray<Microsoft.VisualStudio.Text.Span>.Empty;
+                    }
 
                     var filterMask = filterManager.CreateFilterMask(completion.Filters);
-                    availableFilters |= filterManager.blacklistFilters & filterMask; // Announce availability.
+                    availableFilters |= filterManager.blacklistFilters & filterMask; // Announce filter availability.
                     if (filterManager.HasBlacklistedFilter(filterMask)) continue;
 
-                    availableFilters |= filterManager.whitelistFilters & filterMask; // Announce availability.
+                    availableFilters |= filterManager.whitelistFilters & filterMask; // Announce filter availability.
                     if (!filterManager.HasWhitelistedFilter(filterMask)) continue;
 
+                    int roslynScore = GetRoslynScore(completion);
+
+                    int defaultIndex = data.Defaults.IndexOf(completion.FilterText);
+                    if (defaultIndex == -1) defaultIndex = int.MaxValue;
+
+                    var key = new CompletionItemKey
+                    {
+                        patternScore = patternScore,
+                        roslynScore = roslynScore,
+                        defaultIndex = defaultIndex,
+                        initialIndex = i
+                    };
+#if INCLUDE_DEBUG_SUFFIX
+                    AddDebugSuffix(ref completion, in key);
+#endif
                     eligibleCompletions[n_eligibleCompletions] = new CompletionItemWithHighlight(completion, matchedSpans);
-                    eligibleKeys[n_eligibleCompletions] = new CompletionItemKey { score = wordScore, index = i };
+                    eligibleKeys[n_eligibleCompletions] = key;
                     n_eligibleCompletions++;
                 }
 
@@ -152,19 +214,54 @@ namespace VSIntelliSenseTweaks
                 filterStates = UpdateFilterStates(filterStates, availableFilters);
             }
 
-            void AddEligibleCompletionsWithoutTextFilter()
+            UpdateSelectionHint GetSelectionKind()
             {
-                for (int i = 0; i < n_completions; i++)
-                {
-                    var completion = completions[i];
+                if (n_eligibleCompletions == 0)
+                    return UpdateSelectionHint.NoChange;
 
-                    var filterMask = filterManager.CreateFilterMask(completion.Filters);
-                    if (!filterManager.PassesActiveFilters(filterMask)) continue;
+                if (hasTextFilter && !data.DisplaySuggestionItem)
+                    return UpdateSelectionHint.Selected;
 
-                    eligibleCompletions[n_eligibleCompletions] = new CompletionItemWithHighlight(completion);
-                    n_eligibleCompletions++;
-                }
+                var bestKey = eligibleKeys[0];
+
+                if (bestKey.roslynScore >= MatchPriority.Preselect)
+                    return UpdateSelectionHint.Selected;
+
+                //if (bestKey.defaultIndex < int.MaxValue)
+                //    return UpdateSelectionHint.Selected;
+
+                return UpdateSelectionHint.SoftSelected;
             }
+        }
+
+        private int GetRoslynScore(VSCompletionItem completion)
+        {
+            var roslynObject = completion.Properties.GetProperty("RoslynCompletionItemData");
+
+            if (roslynObject == null) return 0;
+
+            var roslynCompletion = GetRoslynItemProperty(roslynObject);
+            int roslynScore = roslynCompletion.Rules.MatchPriority;
+
+            return roslynScore;
+        }
+
+        // Since we do not have compile time access the class type:
+        // "Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncCompletion.CompletionItemData",
+        // we have to use reflection or expressions to access it.
+        private static Func<object, RoslynCompletionItem> RoslynCompletionItemGetter = null;
+        private RoslynCompletionItem GetRoslynItemProperty(object roslynObject)
+        {
+            if (RoslynCompletionItemGetter == null)
+            {
+                var input    = Expression.Parameter(typeof(object));
+                var casted   = Expression.Convert(input, roslynObject.GetType());
+                var property = Expression.PropertyOrField(casted, "RoslynItem");
+                var lambda   = Expression.Lambda(property, input);
+                RoslynCompletionItemGetter = (Func<object, RoslynCompletionItem>)lambda.Compile();
+            }
+
+            return RoslynCompletionItemGetter.Invoke(roslynObject);
         }
 
         private ImmutableArray<CompletionFilterWithState> UpdateFilterStates(ImmutableArray<CompletionFilterWithState> filterStates, BitField64 availableFilters)
@@ -179,9 +276,9 @@ namespace VSIntelliSenseTweaks
             return builder.MoveToImmutable();
         }
 
-        struct InitialComparer : IComparer<CompletionItem>
+        struct InitialComparer : IComparer<VSCompletionItem>
         {
-            public int Compare(CompletionItem x, CompletionItem y)
+            public int Compare(VSCompletionItem x, VSCompletionItem y)
             {
                 var a = x.SortText; var b = y.SortText;
                 int comp = 0;
@@ -209,15 +306,25 @@ namespace VSIntelliSenseTweaks
 
         struct CompletionItemKey : IComparable<CompletionItemKey>
         {
-            public int score;
-            public int index;
+            public int patternScore;
+            public int roslynScore;
+            public int defaultIndex;
+            public int initialIndex;
 
             public int CompareTo(CompletionItemKey other)
             {
-                int comp = score - other.score;
+                int comp = patternScore - other.patternScore;
+                if (comp == 0)
+                {
+                    comp = other.roslynScore - roslynScore;
+                }
+                if (comp == 0)
+                {
+                    comp = defaultIndex - other.defaultIndex;
+                }
                 if (comp == 0) // If score is same, preserve initial ordering.
                 {
-                    comp = index - other.index;
+                    comp = initialIndex - other.initialIndex;
                 }
                 return comp;
             }
@@ -323,6 +430,32 @@ namespace VSIntelliSenseTweaks
             {
                 return !HasBlacklistedFilter(completionFilters) && HasWhitelistedFilter(completionFilters);
             }
+        }
+
+        [Conditional("INCLUDE_DEBUG_SUFFIX")]
+        private void AddDebugSuffix(ref VSCompletionItem completion, in CompletionItemKey key)
+        {
+            var patternScoreString = key.patternScore == 0 ? "-" : key.patternScore.ToString();
+            var roslynScoreString = key.roslynScore == 0 ? "-" : key.roslynScore.ToString();
+            var defaultIndexString = key.defaultIndex == int.MaxValue ? "-" : key.defaultIndex.ToString();
+            var debugSuffix = $@" (ptrnScr: {patternScoreString}, rslnScr: {roslynScoreString}, dfltIdx: {defaultIndexString}, initIdx: {key.initialIndex})";
+            completion = new VSCompletionItem
+            (
+                completion.DisplayText,
+                completion.Source,
+                completion.Icon,
+                completion.Filters,
+                completion.Suffix + debugSuffix,
+                completion.InsertText,
+                completion.SortText,
+                completion.FilterText,
+                completion.AutomationText,
+                completion.AttributeIcons,
+                completion.CommitCharacters,
+                completion.ApplicableToSpan,
+                completion.IsCommittedAsSnippet,
+                completion.IsPreselected
+            );
         }
     }
 }
