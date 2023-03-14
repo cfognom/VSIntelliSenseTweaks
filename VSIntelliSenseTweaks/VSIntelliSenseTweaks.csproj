@@ -51,7 +51,6 @@
     <Compile Include="Utilities\BitField64.cs" />
     <Compile Include="Utilities\LightStack.cs" />
     <Compile Include="Utilities\Helpers.cs" />
-    <Compile Include="CompletionCommitManager.cs" />
     <Compile Include="VSIntellisenseTweaksPackage.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="CompletionItemManager.cs" />
