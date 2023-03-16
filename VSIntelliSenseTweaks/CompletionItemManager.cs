@@ -190,9 +190,9 @@ namespace VSIntelliSenseTweaks
 
                         var key = new CompletionItemKey
                         {
-                            patternScore = patternScore,
                             defaultIndex = defaultIndex,
                             roslynScore = roslynScore,
+                            patternScore = patternScore,
                             initialIndex = i,
                             matchedSpans = matchedSpans,
                         };
@@ -318,22 +318,22 @@ namespace VSIntelliSenseTweaks
 
         struct CompletionItemKey : IComparable<CompletionItemKey>
         {
-            public int patternScore;
             public int defaultIndex;
             public int roslynScore;
+            public int patternScore;
             public int initialIndex;
             public ImmutableArray<Span> matchedSpans;
 
             public int CompareTo(CompletionItemKey other)
             {
-                int comp = patternScore - other.patternScore;
-                if (comp == 0)
-                {
-                    comp = defaultIndex - other.defaultIndex;
-                }
+                int comp = defaultIndex - other.defaultIndex;
                 if (comp == 0)
                 {
                     comp = other.roslynScore - roslynScore;
+                }
+                if (comp == 0)
+                {
+                    comp = patternScore - other.patternScore;
                 }
                 if (comp == 0) // If score is same, preserve initial ordering.
                 {
@@ -449,11 +449,11 @@ namespace VSIntelliSenseTweaks
         [Conditional("INCLUDE_DEBUG_SUFFIX")]
         private void AddDebugSuffix(ref VSCompletionItem completion, in CompletionItemKey key)
         {
-            var patternScoreString = key.patternScore == 0 ? "-" : key.patternScore.ToString();
-            var roslynScoreString = key.roslynScore == 0 ? "-" : key.roslynScore.ToString();
             var defaultIndexString = key.defaultIndex == int.MaxValue ? "-" : key.defaultIndex.ToString();
+            var roslynScoreString = key.roslynScore == 0 ? "-" : key.roslynScore.ToString();
+            var patternScoreString = key.patternScore == 0 ? "-" : key.patternScore.ToString();
 
-            var debugSuffix = $" (ptrnScr: {patternScoreString}, rslnScr: {roslynScoreString}, dfltIdx: {defaultIndexString}, initIdx: {key.initialIndex})";
+            var debugSuffix = $" (dfltIdx: {defaultIndexString}, rslnScr: {roslynScoreString}, ptrnScr: {patternScoreString}, initIdx: {key.initialIndex})";
             
             var modifiedCompletion = new VSCompletionItem
             (
