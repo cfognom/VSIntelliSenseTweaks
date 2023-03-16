@@ -37,7 +37,7 @@ namespace VSIntelliSenseTweaks
 
             if (Recurse(state))
             {
-                return pendingResult.Finalize(out matchedSpans);
+                return pendingResult.Finalize(word.Length, out matchedSpans);
             }
             else
             {
@@ -178,7 +178,8 @@ namespace VSIntelliSenseTweaks
         struct PendingResult
         {
             private ImmutableArray<Span>.Builder builder;
-            private int farness; // Distance from start;
+            // TODO: maybe rework farness into non-matched count?
+            //private int farness; // Distance from start;
             private int inexactness; // Number of non-exact char matches.
             private int disjointness; // Number of spans.
 
@@ -188,35 +189,37 @@ namespace VSIntelliSenseTweaks
 
                 this.builder = ImmutableArray.CreateBuilder<Span>(n_matchedSpans);
                 builder.Count = builder.Capacity;
-                this.farness = 0;
+                //this.farness = 0;
                 this.inexactness = 0;
                 this.disjointness = 0;
             }
 
-            public int Finalize(out ImmutableArray<Span> matchedSpans)
+            public int Finalize(int wordLength, out ImmutableArray<Span> matchedSpans)
             {
                 matchedSpans = builder.MoveToImmutable();
-                return CalculateScore();
+                return CalculateScore(wordLength);
             }
 
             public void AddSpan(int index, MatchedSpan span)
             {
                 builder[index] = span.ToSpan();
-                farness      += span.Start;
+                //farness      += span.Length;
                 inexactness  += span.Inexactness;
                 disjointness += span.IsSubwordStart ? 1 : 2;
             }
 
-            public int CalculateScore()
+            private int CalculateScore(int wordLength)
             {
-                farness = Math.Min(farness, (1 << 13) - 1);
+                //farness = Math.Min(farness, (1 << 13) - 1);
+                wordLength = Math.Min(wordLength, (1 << 13) - 1);
 
-                Debug.Assert(0 <= farness      && farness      <  (1 << 13)); // Needs 13 bits
+                //Debug.Assert(0 <= farness      && farness      <  (1 << 13)); // Needs 13 bits
+                Debug.Assert(0 <= wordLength   && wordLength   <  (1 << 13)); // Needs 13 bits
                 Debug.Assert(0 <= inexactness  && inexactness  <= (1 << 8 )); // Needs 9  bits, since it can be equal to 2^8
                 Debug.Assert(1 <= disjointness && disjointness <  (1 << 9 )); // Needs 9  bits
                                                                               // Total 31 bits (cant use last sign bit)
 
-                int score = (farness      <<  0      )
+                int score = (wordLength   <<  0      )
                           + (inexactness  <<  13     )
                           + (disjointness << (13 + 9));
 
