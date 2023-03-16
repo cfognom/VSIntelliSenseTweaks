@@ -183,16 +183,16 @@ namespace VSIntelliSenseTweaks
                         availableFilters |= filterManager.whitelist & filterMask; // Announce filter availability.
                         if (!filterManager.HasWhitelistedFilter(filterMask)) continue;
 
-                        int roslynScore = GetRoslynScore(completion);
-
                         int defaultIndex = defaults.IndexOf(completion.FilterText);
                         if (defaultIndex == -1) defaultIndex = int.MaxValue;
+
+                        int roslynScore = GetRoslynScore(completion);
 
                         var key = new CompletionItemKey
                         {
                             patternScore = patternScore,
-                            roslynScore = roslynScore,
                             defaultIndex = defaultIndex,
+                            roslynScore = roslynScore,
                             initialIndex = i,
                             matchedSpans = matchedSpans,
                         };
@@ -319,8 +319,8 @@ namespace VSIntelliSenseTweaks
         struct CompletionItemKey : IComparable<CompletionItemKey>
         {
             public int patternScore;
-            public int roslynScore;
             public int defaultIndex;
+            public int roslynScore;
             public int initialIndex;
             public ImmutableArray<Span> matchedSpans;
 
@@ -329,11 +329,11 @@ namespace VSIntelliSenseTweaks
                 int comp = patternScore - other.patternScore;
                 if (comp == 0)
                 {
-                    comp = other.roslynScore - roslynScore;
+                    comp = defaultIndex - other.defaultIndex;
                 }
                 if (comp == 0)
                 {
-                    comp = defaultIndex - other.defaultIndex;
+                    comp = other.roslynScore - roslynScore;
                 }
                 if (comp == 0) // If score is same, preserve initial ordering.
                 {
