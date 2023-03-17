@@ -168,11 +168,11 @@ namespace VSIntelliSenseTweaks
                         {
                             var word = completion.FilterText.AsSpan();
                             patternScore = scorer.ScoreWord(pattern, word, out matchedSpans);
-                            if (patternScore <= 0) continue;
+                            if (patternScore == int.MinValue) continue;
                         }
                         else
                         {
-                            patternScore = 0;
+                            patternScore = int.MinValue;
                             matchedSpans = noSpans;
                         }
 
@@ -449,7 +449,7 @@ namespace VSIntelliSenseTweaks
         [Conditional("INCLUDE_DEBUG_SUFFIX")]
         private void AddDebugSuffix(ref VSCompletionItem completion, in CompletionItemKey key)
         {
-            var patternScoreString = key.patternScore == 0 ? "-" : key.patternScore.ToString();
+            var patternScoreString = key.patternScore == int.MinValue ? "-" : key.patternScore.ToString();
             var defaultIndexString = key.defaultIndex == int.MaxValue ? "-" : key.defaultIndex.ToString();
             var roslynScoreString = key.roslynScore == 0 ? "-" : key.roslynScore.ToString();
 

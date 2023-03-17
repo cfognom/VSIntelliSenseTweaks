@@ -37,12 +37,12 @@ namespace VSIntelliSenseTweaks
 
             if (Recurse(state))
             {
-                return pendingResult.Finalize(word.Length, n_subwords, isSubwordStart, out matchedSpans);
+                return pendingResult.Finalize(word.Length, pattern.Length, n_subwords, isSubwordStart, out matchedSpans);
             }
             else
             {
                 matchedSpans = default;
-                return 0;
+                return int.MinValue;
             }
         }
 
@@ -96,6 +96,7 @@ namespace VSIntelliSenseTweaks
             int pushCount = 0;
             for (int i = 0; i <= i_final; i++)
             {
+                //TODO: Change to slide over approach.
                 if (char.ToLower(state.pattern[0]) == char.ToLower(state.word[i]))
                 {
                     var slice = state.word.Slice(i);
@@ -181,6 +182,7 @@ namespace VSIntelliSenseTweaks
         struct PendingResult
         {
             ImmutableArray<Span>.Builder builder;
+            int score;
 
             public PendingResult(int n_matchedSpans) : this()
             {
@@ -190,15 +192,27 @@ namespace VSIntelliSenseTweaks
                 builder.Count = n_matchedSpans;
             }
 
-            public int Finalize(int wordLength, int n_subwords, BitSpan isSubwordStart, out ImmutableArray<Span> matchedSpans)
+            public int Finalize(int wordLength, int patternLength, int n_subwords, BitSpan isSubwordStart, out ImmutableArray<Span> matchedSpans)
             {
                 matchedSpans = builder.MoveToImmutable();
-                return CalculateScore(wordLength, n_subwords, isSubwordStart, matchedSpans);
+                score -= 4 * (wordLength - patternLength);
+                return score;
+                //return CalculateScore(wordLength, n_subwords, isSubwordStart, matchedSpans);
             }
 
             public void AddSpan(int index, MatchedSpan span)
             {
+                this.score += ScoreSpan(span);
                 builder[index] = span.ToSpan();
+            }
+
+            private int ScoreSpan(MatchedSpan span)
+            {
+                int effectiveLength = (4 * span.Length - 3 * span.Inexactness);
+                int score = 4 * effectiveLength - 3;
+                score += span.IsSubwordStart ? 32 : 0;
+                score -= span.Start;
+                return score;
             }
 
             private int CalculateScore(int wordLength, int n_subwords, BitSpan isSubwordStart, ImmutableArray<Span> matchedSpans)
