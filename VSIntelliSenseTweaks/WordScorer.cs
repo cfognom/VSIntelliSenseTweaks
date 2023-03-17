@@ -24,7 +24,7 @@ namespace VSIntelliSenseTweaks
 
             Span<int> subwordData = stackalloc int[BitSpan.GetRequiredIntCount(word.Length)];
             var isSubwordStart = new BitSpan(subwordData);
-            DetermineSubwords(word, isSubwordStart);
+            int n_subwords = DetermineSubwords(word, isSubwordStart);
 
             var state = new State
             {
@@ -37,7 +37,7 @@ namespace VSIntelliSenseTweaks
 
             if (Recurse(state))
             {
-                return pendingResult.Finalize(word.Length, out matchedSpans);
+                return pendingResult.Finalize(word.Length, n_subwords, isSubwordStart, out matchedSpans);
             }
             else
             {
@@ -46,7 +46,7 @@ namespace VSIntelliSenseTweaks
             }
         }
 
-        private void DetermineSubwords(ReadOnlySpan<char> word, BitSpan isSubwordStart)
+        private int DetermineSubwords(ReadOnlySpan<char> word, BitSpan isSubwordStart)
         {
             Span<CharKind> charKinds = word.Length <= 1024 ? stackalloc CharKind[word.Length] : new CharKind[word.Length];
             int n_chars = word.Length;
@@ -56,6 +56,7 @@ namespace VSIntelliSenseTweaks
                 charKinds[i] = new CharKind(word[i]);
             }
 
+            int n_subwords = 0;
             for (int i = 0; i < n_chars; i++)
             {
                 bool isSubwordBeginning = i == 0
@@ -66,8 +67,10 @@ namespace VSIntelliSenseTweaks
                 if (isSubwordBeginning)
                 {
                     isSubwordStart.SetBit(i);
+                    n_subwords++;
                 }
             }
+            return n_subwords;
         }
 
         private ref struct State
@@ -177,55 +180,82 @@ namespace VSIntelliSenseTweaks
 
         struct PendingResult
         {
-            private ImmutableArray<Span>.Builder builder;
-            // TODO: maybe rework farness into non-matched count?
-            //private int farness; // Distance from start;
-            private int inexactness; // Number of non-exact char matches.
-            private int disjointness; // Number of spans.
+            ImmutableArray<Span>.Builder builder;
 
-            public PendingResult(int n_matchedSpans)
+            public PendingResult(int n_matchedSpans) : this()
             {
                 Debug.Assert(n_matchedSpans > 0);
 
                 this.builder = ImmutableArray.CreateBuilder<Span>(n_matchedSpans);
-                builder.Count = builder.Capacity;
-                //this.farness = 0;
-                this.inexactness = 0;
-                this.disjointness = 0;
+                builder.Count = n_matchedSpans;
             }
 
-            public int Finalize(int wordLength, out ImmutableArray<Span> matchedSpans)
+            public int Finalize(int wordLength, int n_subwords, BitSpan isSubwordStart, out ImmutableArray<Span> matchedSpans)
             {
                 matchedSpans = builder.MoveToImmutable();
-                return CalculateScore(wordLength);
+                return CalculateScore(wordLength, n_subwords, isSubwordStart, matchedSpans);
             }
 
             public void AddSpan(int index, MatchedSpan span)
             {
                 builder[index] = span.ToSpan();
-                //farness      += span.Length;
-                inexactness  += span.Inexactness;
-                disjointness += span.IsSubwordStart ? 1 : 2;
             }
 
-            private int CalculateScore(int wordLength)
+            private int CalculateScore(int wordLength, int n_subwords, BitSpan isSubwordStart, ImmutableArray<Span> matchedSpans)
             {
-                //farness = Math.Min(farness, (1 << 13) - 1);
-                wordLength = Math.Min(wordLength, (1 << 13) - 1);
+                int n_spans = matchedSpans.Length;
+                Debug.Assert(n_spans > 0);
 
-                //Debug.Assert(0 <= farness      && farness      <  (1 << 13)); // Needs 13 bits
-                Debug.Assert(0 <= wordLength   && wordLength   <  (1 << 13)); // Needs 13 bits
-                Debug.Assert(0 <= inexactness  && inexactness  <= (1 << 8 )); // Needs 9  bits, since it can be equal to 2^8
-                Debug.Assert(1 <= disjointness && disjointness <  (1 << 9 )); // Needs 9  bits
-                                                                              // Total 31 bits (cant use last sign bit)
+                int i_span = 0;
+                int i_subword = 0;
+                int i_char = 0;
 
-                int score = (wordLength   <<  0      )
-                          + (inexactness  <<  13     )
-                          + (disjointness << (13 + 9));
+                int totalScore = 0;
+                for (; i_subword < n_subwords; i_subword++)
+                {
+                    Span subword;
+                    int subwordLength;
+                    { // GetSubword
+                        int subwordStart = i_char;
+                        do
+                        {
+                            i_char++;
+                        } while (i_char < wordLength && !isSubwordStart[i_char]);
+                        subwordLength = i_char - subwordStart;
+                        subword = new Span(subwordStart, subwordLength);
+                    }
 
-                Debug.Assert(score > 0);
+                    int cohesion = 0;
+                    bool isStartMatch = false;
+                    while (i_span < n_spans)
+                    {
+                        Span span = matchedSpans[i_span++];
+                        if (span.Start >= subword.End)
+                        {
+                            i_span--;
+                            break;
+                        }
+                        isStartMatch |= span.Start == subword.Start;
+                        cohesion += 4 * span.Length - 3;
+                    }
 
-                return score;
+                    if (cohesion > 0)
+                    {
+                        int subwordScore = (isStartMatch ? 16 : 8) * cohesion;
+                        subwordScore -= subword.Start;
+
+                        totalScore += subwordScore;
+                    }
+                    else
+                    {
+                        totalScore -= 2 * subword.Length;
+                    }
+                }
+
+                //totalScore /= n_subwords;
+                //totalScore -= wordLength;
+
+                return totalScore;
             }
         }
 
