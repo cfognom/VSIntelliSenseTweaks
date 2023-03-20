@@ -32,6 +32,13 @@ namespace VSIntelliSenseTweaks.Utilities
             array[count++] = value;
         }
 
+        public T Peek()
+        {
+            Debug.Assert(count > 0);
+
+            return array[count - 1];
+        }
+
         public T Pop()
         {
             Debug.Assert(count > 0);
