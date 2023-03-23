@@ -11,16 +11,9 @@ using static System.Windows.Forms.AxHost;
 
 namespace VSIntelliSenseTweaks
 {
-    public struct WordScorer
+    public static class WordScorer
     {
-        PendingResult pendingResult;
-
-        public WordScorer(int maxPatternLength)
-        {
-            this.pendingResult = default;
-        }
-
-        public int ScoreWord(ReadOnlySpan<char> word, ReadOnlySpan<char> pattern, out ImmutableArray<Span> matchedSpans)
+        public static int ScoreWord(ReadOnlySpan<char> word, ReadOnlySpan<char> pattern, out ImmutableArray<Span> matchedSpans)
         {
             int wordLength = word.Length;
             int patternLength = pattern.Length;
@@ -47,7 +40,8 @@ namespace VSIntelliSenseTweaks
 
             if (FindMatchingSpans(ref data))
             {
-                return pendingResult.Finalize(wordLength, patternLength, n_subwords, isSubwordStart, out matchedSpans);
+                int score = CompileSpans(ref data, out matchedSpans);
+                return score;
             }
             else
             {
@@ -56,7 +50,7 @@ namespace VSIntelliSenseTweaks
             }
         }
 
-        private int DetermineSubwords(ReadOnlySpan<char> word, BitSpan isSubwordStart)
+        static int DetermineSubwords(ReadOnlySpan<char> word, BitSpan isSubwordStart)
         {
             Span<CharKind> charKinds = word.Length <= 1024 ? stackalloc CharKind[word.Length] : new CharKind[word.Length];
             int n_chars = word.Length;
@@ -84,6 +78,12 @@ namespace VSIntelliSenseTweaks
             return n_subwords;
         }
 
+        private struct CharData
+        {
+            byte spanIndex;
+            
+        }
+
         private ref struct PatternMatchingData
         {
             public ReadOnlySpan<char> word;
@@ -104,7 +104,7 @@ namespace VSIntelliSenseTweaks
             }
         }
 
-        private bool FindMatchingSpans(ref PatternMatchingData data)
+        static bool FindMatchingSpans(ref PatternMatchingData data)
         {
             int patternLength = data.pattern.Length;
             int n_matchedInPattern = 0;
@@ -158,20 +158,10 @@ namespace VSIntelliSenseTweaks
 
             bool success = n_matchedInPattern == patternLength;
 
-            if (success)
-            {
-                Debug.Assert(data.spanCount > 0);
-                this.pendingResult = new PendingResult(data.spanCount);
-                for (int i = 0; i < data.spanCount; i++)
-                {
-                    pendingResult.AddSpan(i, data.spans[i]);
-                }
-            }
-
             return success;
         }
 
-        private int MatchForward(PatternMatchingData state, int wordStartIndex, int patternStartIndex, out bool isSubwordStartAhead)
+        static int MatchForward(PatternMatchingData state, int wordStartIndex, int patternStartIndex, out bool isSubwordStartAhead)
         {
             int i = wordStartIndex;
             int j = patternStartIndex;
@@ -196,7 +186,7 @@ namespace VSIntelliSenseTweaks
             return j - patternStartIndex;
         }
 
-        private int MatchBackward(PatternMatchingData state, int wordStartIndex, int patternStartIndex)
+        static int MatchBackward(PatternMatchingData state, int wordStartIndex, int patternStartIndex)
         {
             int i = wordStartIndex;
             int j = patternStartIndex;
@@ -220,147 +210,42 @@ namespace VSIntelliSenseTweaks
             return patternStartIndex - j;
         }
 
-        private MatchedSpan CreateMatchedSpan(ReadOnlySpan<char> pattern, ReadOnlySpan<char> word, BitSpan isSubwordStart, int wordPosition)
+        static int CompileSpans(ref PatternMatchingData data, out ImmutableArray<Span> matchedSpans)
         {
-            Debug.Assert(pattern.Length <= word.Length);
-
-            int inexactness = pattern[0] == word[0] ? 0 : 1;
-            int i = 1;
-            while (i < pattern.Length && !isSubwordStart[wordPosition + i] && char.ToUpperInvariant(pattern[i]) == char.ToUpperInvariant(word[i]))
+            int n_spans = data.spanCount;
+            var builder = ImmutableArray.CreateBuilder<Span>(n_spans);
+            builder.Count = n_spans;
+            int score = 0;
+            for (int i = 0; i < n_spans; i++)
             {
-                if (pattern[i] != word[i])
-                {
-                    inexactness++;
-                }
-                i++;
+                var span = data.spans[i];
+                builder[i] = span.ToSpan();
+                score += ScoreSpan(span); 
             }
 
-            return new MatchedSpan(wordPosition, 0, i, isSubwordStart[wordPosition]);
+            score -= 4 * (data.word.Length - data.pattern.Length);
+            matchedSpans = builder.MoveToImmutable();
+
+            return score;
         }
 
-        private static bool FuzzyCharEquals(char a, char b)
+        static int ScoreSpan(MatchedSpan span)
+        {
+            //int effectiveLength = (4 * span.Length - 3 * span.Inexactness);
+            int effectiveLength = (4 * span.Length);
+            int score = 4 * effectiveLength - 3;
+            score += span.IsSubwordStart ? 32 : 0;
+            score -= span.Start;
+            return score;
+        }
+
+        static bool FuzzyCharEquals(char a, char b)
         {
             int comp = a - b;
             bool result = comp == 0;
             result |= comp == 32;
             result |= comp == -32;
             return result;
-        }
-
-        private struct BestSpanLast : IComparer<MatchedSpan>
-        {
-            public int Compare(MatchedSpan x, MatchedSpan y)
-            {
-                int comp = x.IsSubwordStart_AsInt - y.IsSubwordStart_AsInt;
-                if (comp == 0)
-                {
-                    comp = x.Length - y.Length;
-                }
-                //if (comp == 0)
-                //{
-                //    comp = y.Inexactness - x.Inexactness;
-                //}
-                if (comp == 0)
-                {
-                    comp = y.Start - x.Start;
-                }
-                return comp;
-            }
-        }
-
-        struct PendingResult
-        {
-            ImmutableArray<Span>.Builder builder;
-            int score;
-
-            public PendingResult(int n_matchedSpans) : this()
-            {
-                Debug.Assert(n_matchedSpans > 0);
-
-                this.builder = ImmutableArray.CreateBuilder<Span>(n_matchedSpans);
-                builder.Count = n_matchedSpans;
-            }
-
-            public int Finalize(int wordLength, int patternLength, int n_subwords, BitSpan isSubwordStart, out ImmutableArray<Span> matchedSpans)
-            {
-                matchedSpans = builder.MoveToImmutable();
-                score -= 4 * (wordLength - patternLength);
-                return score;
-                //return CalculateScore(wordLength, n_subwords, isSubwordStart, matchedSpans);
-            }
-
-            public void AddSpan(int index, MatchedSpan span)
-            {
-                this.score += ScoreSpan(span);
-                builder[index] = span.ToSpan();
-            }
-
-            private int ScoreSpan(MatchedSpan span)
-            {
-                //int effectiveLength = (4 * span.Length - 3 * span.Inexactness);
-                int effectiveLength = (4 * span.Length);
-                int score = 4 * effectiveLength - 3;
-                score += span.IsSubwordStart ? 32 : 0;
-                score -= span.Start;
-                return score;
-            }
-
-            private int CalculateScore(int wordLength, int n_subwords, BitSpan isSubwordStart, ImmutableArray<Span> matchedSpans)
-            {
-                int n_spans = matchedSpans.Length;
-                Debug.Assert(n_spans > 0);
-
-                int i_span = 0;
-                int i_subword = 0;
-                int i_char = 0;
-
-                int totalScore = 0;
-                for (; i_subword < n_subwords; i_subword++)
-                {
-                    Span subword;
-                    int subwordLength;
-                    { // GetSubword
-                        int subwordStart = i_char;
-                        do
-                        {
-                            i_char++;
-                        } while (i_char < wordLength && !isSubwordStart[i_char]);
-                        subwordLength = i_char - subwordStart;
-                        subword = new Span(subwordStart, subwordLength);
-                    }
-
-                    int cohesion = 0;
-                    bool isStartMatch = false;
-                    while (i_span < n_spans)
-                    {
-                        Span span = matchedSpans[i_span++];
-                        if (span.Start >= subword.End)
-                        {
-                            i_span--;
-                            break;
-                        }
-                        isStartMatch |= span.Start == subword.Start;
-                        cohesion += 4 * span.Length - 3;
-                    }
-
-                    if (cohesion > 0)
-                    {
-                        int subwordScore = (isStartMatch ? 16 : 8) * cohesion;
-                        subwordScore -= subword.Start;
-
-                        totalScore += subwordScore;
-                    }
-                    else
-                    {
-                        totalScore -= 2 * subword.Length;
-                    }
-                }
-
-                //totalScore /= n_subwords;
-                //totalScore -= wordLength;
-
-                return totalScore;
-            }
         }
 
         private struct MatchedSpan

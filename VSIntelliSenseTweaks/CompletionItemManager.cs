@@ -51,8 +51,6 @@ namespace VSIntelliSenseTweaks
         CompletionItemKey[] keys;
         int n_completions;
 
-        WordScorer scorer = new WordScorer(maxPatternLength: textFilterMaxLength);
-
         CompletionFilterManager filterManager;
         bool hasFilterManager;
 
@@ -169,7 +167,7 @@ namespace VSIntelliSenseTweaks
                         if (hasTextFilter)
                         {
                             var word = completion.FilterText.AsSpan();
-                            patternScore = scorer.ScoreWord(word, pattern, out matchedSpans);
+                            patternScore = WordScorer.ScoreWord(word, pattern, out matchedSpans);
                             if (patternScore == int.MinValue) continue;
                         }
                         else
