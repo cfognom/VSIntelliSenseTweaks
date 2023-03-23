@@ -128,8 +128,10 @@ namespace VSIntelliSenseTweaks
                     ref var span = ref data.spans[spanIndex];
                     int stealCount = span.EndInPattern - startInPattern;
                     Debug.Assert(stealCount > 0);
-                    if (span.Length <  length
-                    || (span.Length == length && !span.IsSubwordStart && isSubwordStart))
+                    bool shouldSteal = span.IsSubwordStart ?
+                        (isSubwordStart ? span.Length > stealCount || span.Length < length : false ) :
+                        (isSubwordStart ? true : span.Length < length);
+                    if (shouldSteal)
                     {
                         if (span.Length > stealCount)
                         {
