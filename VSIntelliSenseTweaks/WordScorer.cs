@@ -97,19 +97,12 @@ namespace VSIntelliSenseTweaks
             public void SetSpan(MatchedSpan span, byte index)
             {
                 spans[index] = span;
-                for (int i = span.startInPattern; i < span.EndInPattern; i++)
+                for (int i = span.StartInPattern; i < span.EndInPattern; i++)
                 {
                     charToSpan[i] = index;
                 }
             }
         }
-
-        // For each position in word try to match pattern.
-        // If pattern was (partially) matched push matched span to stack.
-        // Sort the pushed spans so that the best span comes last.
-        // Pop the recently pushed spans in sorted order.
-        // If popped span covers all of pattern => success.
-        // Else, reduce word and pattern and call method again (recursive).
 
         private bool FindMatchingSpans(ref PatternMatchingData data)
         {
@@ -130,35 +123,26 @@ namespace VSIntelliSenseTweaks
                     int startInPattern = n_matchedInPattern - bCount;
                     int startInWord = wordPos - bCount;
                     int length = lengthBase + bCount;
+                    bool isSubwordStart = data.isSubwordStart[startInWord];
                     var spanIndex = data.charToSpan[startInPattern];
                     ref var span = ref data.spans[spanIndex];
                     int stealCount = span.EndInPattern - startInPattern;
                     Debug.Assert(stealCount > 0);
-                    if (stealCount < length)
+                    if (span.Length <  length
+                    || (span.Length == length && !span.IsSubwordStart && isSubwordStart))
                     {
-                        span.Length -= stealCount;
-                        spanIndex++;
-                        WriteSpan(ref data, spanIndex);
-                        break;
-                    }
-                    else if (stealCount == length)
-                    {
-                        bool isSubwordStart = data.isSubwordStart[startInWord];
-                        if (!span.IsSubwordStart && isSubwordStart)
+                        if (span.Length > stealCount)
                         {
-                            WriteSpan(ref data, spanIndex);
-                            break;
+                            span.Length -= stealCount;
+                            spanIndex++;
                         }
+                        var newSpan = new MatchedSpan(startInWord, startInPattern, length, isSubwordStart);
+                        data.SetSpan(newSpan, spanIndex);
+                        data.spanCount = ++spanIndex;
+                        break;
                     }
                     bCount -= stealCount;
                     Debug.Assert(bCount >= 0);
-
-                    void WriteSpan(ref PatternMatchingData s, byte index)
-                    {
-                        var newSpan = new MatchedSpan(startInWord, startInPattern, length, s.isSubwordStart[startInWord]);
-                        s.SetSpan(newSpan, index);
-                        s.spanCount = ++index;
-                    }
                 }
 
                 if (fCount > 0 && (isSplit || bCount == 0))
@@ -381,10 +365,10 @@ namespace VSIntelliSenseTweaks
 
         private struct MatchedSpan
         {
-            internal short start;
-            internal byte startInPattern;
-            internal byte length;
-            internal byte isSubwordStart;
+            short start;
+            byte startInPattern;
+            byte length;
+            byte isSubwordStart;
 
             public bool IsValid => length > 0;
             public int Start => start;
