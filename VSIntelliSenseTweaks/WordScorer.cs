@@ -13,40 +13,41 @@ namespace VSIntelliSenseTweaks
 {
     public struct WordScorer
     {
-        MatchedSpan[] matchedSpans;
-        int n_matchedSpans;
-        //LightStack<MatchedSpan> workStack;
         PendingResult pendingResult;
 
         public WordScorer(int maxPatternLength)
         {
-            //this.workStack = new LightStack<MatchedSpan>(stackInitialCapacity);
-            this.matchedSpans = new MatchedSpan[maxPatternLength];
-            this.n_matchedSpans = default;
             this.pendingResult = default;
         }
 
-        public int ScoreWord(ReadOnlySpan<char> pattern, ReadOnlySpan<char> word, out ImmutableArray<Span> matchedSpans)
+        public int ScoreWord(ReadOnlySpan<char> word, ReadOnlySpan<char> pattern, out ImmutableArray<Span> matchedSpans)
         {
-            Debug.Assert(pattern.Length > 0);
+            int wordLength = word.Length;
+            int patternLength = pattern.Length;
+            Debug.Assert(patternLength > 0);
 
-            int n_ints = BitSpan.GetRequiredIntCount(word.Length);
+            int n_ints = BitSpan.GetRequiredIntCount(wordLength + 1);
             Span<int> ints = n_ints <= 256 ? stackalloc int[n_ints] : new int[n_ints];
             var isSubwordStart = new BitSpan(ints);
             int n_subwords = DetermineSubwords(word, isSubwordStart);
 
-            var state = new State
+            Debug.Assert(patternLength <= 256);
+            Span<MatchedSpan> spans = stackalloc MatchedSpan[patternLength];
+            Span<byte> charToSpan = stackalloc byte[patternLength];
+
+            var data = new PatternMatchingData
             {
-                pattern = pattern,
                 word = word,
+                pattern = pattern,
+                charToSpan = charToSpan,
+                spans = spans,
                 isSubwordStart = isSubwordStart,
-                wordPosition = 0,
-                n_matchedSpans = 0
+                spanCount = 0,
             };
 
-            if (Recurse(state))
+            if (FindMatchingSpans(ref data))
             {
-                return pendingResult.Finalize(word.Length, pattern.Length, n_subwords, isSubwordStart, out matchedSpans);
+                return pendingResult.Finalize(wordLength, patternLength, n_subwords, isSubwordStart, out matchedSpans);
             }
             else
             {
@@ -83,14 +84,24 @@ namespace VSIntelliSenseTweaks
             return n_subwords;
         }
 
-        private ref struct State
+        private ref struct PatternMatchingData
         {
-            public ReadOnlySpan<char> pattern;
-            //public ReadOnlySpan<char> antiPattern;
             public ReadOnlySpan<char> word;
+            public ReadOnlySpan<char> pattern;
+            public Span<byte> charToSpan;
+            public Span<MatchedSpan> spans;
             public BitSpan isSubwordStart;
-            public int wordPosition;
-            public int n_matchedSpans;
+            public byte spanCount;
+
+            public int GetSpanIndex(int charIndex) => charToSpan[charIndex];
+            public void SetSpan(MatchedSpan span, byte index)
+            {
+                spans[index] = span;
+                for (int i = span.startInPattern; i < span.EndInPattern; i++)
+                {
+                    charToSpan[i] = index;
+                }
+            }
         }
 
         // For each position in word try to match pattern.
@@ -100,188 +111,129 @@ namespace VSIntelliSenseTweaks
         // If popped span covers all of pattern => success.
         // Else, reduce word and pattern and call method again (recursive).
 
-        private bool Recurse(State state)
+        private bool FindMatchingSpans(ref PatternMatchingData data)
         {
-            n_matchedSpans = 0;
-            int patternLength = state.pattern.Length;
-            int iw_final = state.word.Length - patternLength;
-            int ip_end = patternLength;
-            //Span<short> patternToWord = stackalloc short[patternLength];
-            //int stackIndex = workStack.count;
-            //int pushCount = 0;
+            int patternLength = data.pattern.Length;
             int n_matchedInPattern = 0;
-            for (int iw = 0; iw <= iw_final; iw++)
+            int i_final = data.word.Length - patternLength;
+            for (int i = 0; i <= i_final;)
             {
-                //TODO: Change to slide over approach.
-                //TODO: make two spans, one original and one with case inverted.
-                var potentialSpan = new MatchedSpan { start = -1 };
-                int ip = 0;
-                while (true)
+                int wordPos = i + n_matchedInPattern;
+                int bCount = MatchBackward(data, wordPos - 1, n_matchedInPattern - 1);
+                int fCount = MatchForward(data, wordPos, n_matchedInPattern, out bool isSubwordStartAhead);
+
+                bool isSplit = data.isSubwordStart[wordPos];
+                int lengthBase = isSplit ? 0 : fCount;
+
+                while (bCount > 0)
                 {
-                    bool isCharMatch = FuzzyCharEquals(state.pattern[ip], state.word[iw + ip]);
-                    if (isCharMatch)
+                    int startInPattern = n_matchedInPattern - bCount;
+                    int startInWord = wordPos - bCount;
+                    int length = lengthBase + bCount;
+                    var spanIndex = data.charToSpan[startInPattern];
+                    ref var span = ref data.spans[spanIndex];
+                    int stealCount = span.EndInPattern - startInPattern;
+                    Debug.Assert(stealCount > 0);
+                    if (stealCount < length)
                     {
-                        if (!HasOpenSpan())
-                        {
-                            OpenSpan(state);
-                        }
-                        n_matchedInPattern = Math.Max(n_matchedInPattern, ip + 1);
-                    }
-                    else
-                    {
-                        if (HasOpenSpan())
-                        {
-                            CloseSpan(matchedSpans, ref n_matchedSpans, state);
-                        }
-                    }
-
-                    ip++;
-
-                    if (ip > n_matchedInPattern)
-                    {
-                        DiscardSpan();
+                        span.Length -= stealCount;
+                        spanIndex++;
+                        WriteSpan(ref data, spanIndex);
                         break;
                     }
-                    if (ip == ip_end)
+                    else if (stealCount == length)
                     {
-                        if (HasOpenSpan())
+                        bool isSubwordStart = data.isSubwordStart[startInWord];
+                        if (!span.IsSubwordStart && isSubwordStart)
                         {
-                            CloseSpan(matchedSpans, ref n_matchedSpans, state);
+                            WriteSpan(ref data, spanIndex);
+                            break;
                         }
-                        break;
                     }
-                    if (isCharMatch && state.isSubwordStart[iw + ip])
+                    bCount -= stealCount;
+                    Debug.Assert(bCount >= 0);
+
+                    void WriteSpan(ref PatternMatchingData s, byte index)
                     {
-                        CloseSpan(matchedSpans, ref n_matchedSpans, state);
-                    }
-
-                    bool HasOpenSpan() => potentialSpan.start != -1;
-
-                    void OpenSpan(State s)
-                    {
-                        int start = iw + ip;
-                        potentialSpan.start = (short)start;
-                        potentialSpan.isSubwordStart = s.isSubwordStart[start] ? (byte)1 : (byte)0;
-                    }
-
-                    void DiscardSpan()
-                    {
-                        potentialSpan.start = -1;
-                    }
-
-                    void CloseSpan(MatchedSpan[] spans, ref int n_spans, State s)
-                    {
-                        potentialSpan.length = (byte)(iw + ip - potentialSpan.start);
-                        potentialSpan.startInPattern = (byte)(potentialSpan.start - iw);
-                        if (potentialSpan.EndInPattern < n_matchedInPattern)
-                        {
-                            DiscardSpan();
-                            return;
-                        }
-                        if (n_spans == 0)
-                        {
-                            spans[n_spans++] = potentialSpan;
-                            return;
-                        }
-
-                        while (true)
-                        {
-                            // TODO: fix: word: [Se]rial[Rialsoap] pattern: serialsoap
-                            ref var peeked = ref spans[n_spans - 1];
-                            if (peeked.EndInPattern <= potentialSpan.StartInPattern)
-                            {
-                                spans[n_spans++] = potentialSpan;
-                                break;
-                            }
-                            if (peeked.length >= potentialSpan.length)
-                            {
-                                var excess = peeked.EndInPattern - potentialSpan.StartInPattern;
-                                potentialSpan.start += (short)excess;
-                                potentialSpan.startInPattern += (byte)excess;
-                                potentialSpan.length -= (byte)excess;
-                                spans[n_spans++] = potentialSpan;
-                                break;
-                            }
-                            int lengthDiff = potentialSpan.StartInPattern - peeked.StartInPattern;
-                            if (lengthDiff >= 0)
-                            {
-                                if (lengthDiff == 0)
-                                {
-                                    n_spans--;
-                                }
-                                else
-                                {
-                                    peeked.length = (byte)lengthDiff;
-                                }
-                                spans[n_spans++] = potentialSpan;
-                                break;
-                            }
-                            n_spans--;
-                        };
-                        if (n_spans == 0)
-                        {
-                            throw new Exception();
-                        }
+                        var newSpan = new MatchedSpan(startInWord, startInPattern, length, s.isSubwordStart[startInWord]);
+                        s.SetSpan(newSpan, index);
+                        s.spanCount = ++index;
                     }
                 }
 
-                //if (FastCharEquals(state.pattern[0], state.word[i]))
-                ////if (state.pattern[0].Equals(state.word[i]))
-                //{
-                //    var slice = state.word.Slice(i);
-                //    var matchedSpan = CreateMatchedSpan(state.pattern, slice, state.isSubwordStart, state.wordPosition + i);
-                //    workStack.Push(matchedSpan);
-                //    pushCount++;
-                //}
+                if (fCount > 0 && (isSplit || bCount == 0))
+                {
+                    var newSpan = new MatchedSpan(wordPos, n_matchedInPattern, fCount, isSplit);
+                    data.SetSpan(newSpan, data.spanCount);
+                    data.spanCount++;
+                }
+
+                n_matchedInPattern += fCount;
+                if (!isSubwordStartAhead) i++;
             }
 
             bool success = n_matchedInPattern == patternLength;
 
             if (success)
             {
-                Debug.Assert(n_matchedSpans > 0);
-                this.pendingResult = new PendingResult(n_matchedSpans);
-                for (int i = 0; i < n_matchedSpans; i++)
+                Debug.Assert(data.spanCount > 0);
+                this.pendingResult = new PendingResult(data.spanCount);
+                for (int i = 0; i < data.spanCount; i++)
                 {
-                    pendingResult.AddSpan(i, matchedSpans[i]);
+                    pendingResult.AddSpan(i, data.spans[i]);
                 }
             }
 
             return success;
+        }
 
-            //Array.Sort(workStack.array, stackIndex, pushCount, new BestSpanLast());
+        private int MatchForward(PatternMatchingData state, int wordStartIndex, int patternStartIndex, out bool isSubwordStartAhead)
+        {
+            int i = wordStartIndex;
+            int j = patternStartIndex;
+            int j_stop = state.pattern.Length;
+            isSubwordStartAhead = false;
+            while (j != j_stop)
+            {
+                if (!FuzzyCharEquals(state.word[i], state.pattern[j]))
+                {
+                    break;
+                }
 
-            //while (workStack.count > stackIndex)
-            //{
-            //    var bestSpan = workStack.Pop();
+                i++;
+                j++;
 
-            //    if (bestSpan.Length == state.pattern.Length)
-            //    {
-            //        // Whole pattern matched.
-            //        pendingResult = new PendingResult(state.n_matchedSpans + 1);
-            //        pendingResult.AddSpan(state.n_matchedSpans, bestSpan);
-            //        return true;
-            //    }
+                if (state.isSubwordStart[i])
+                {
+                    isSubwordStartAhead = true;
+                    break;
+                }
+            }
+            return j - patternStartIndex;
+        }
 
-            //    int nextWordPosition = bestSpan.End;
-            //    int localNextWordPosition = nextWordPosition - state.wordPosition;
-            //    var newState = new State
-            //    {
-            //        pattern = state.pattern.Slice(bestSpan.Length),
-            //        antiPattern = state.antiPattern.Slice(bestSpan.Length),
-            //        word = state.word.Slice(localNextWordPosition),
-            //        isSubwordStart = state.isSubwordStart,
-            //        wordPosition = nextWordPosition,
-            //        n_matchedSpans = state.n_matchedSpans + 1,
-            //    };
-            //    if (Recurse(newState))
-            //    {
-            //        pendingResult.AddSpan(state.n_matchedSpans, bestSpan);
-            //        return true;
-            //    }
-            //}
+        private int MatchBackward(PatternMatchingData state, int wordStartIndex, int patternStartIndex)
+        {
+            int i = wordStartIndex;
+            int j = patternStartIndex;
+            int j_stop = -1;
+            while (j != j_stop)
+            {
+                if (!FuzzyCharEquals(state.word[i], state.pattern[j]))
+                {
+                    break;
+                }
 
-            //return false;
+                j--;
+
+                if (state.isSubwordStart[i])
+                {
+                    break;
+                }
+
+                i--;
+            }
+            return patternStartIndex - j;
         }
 
         private MatchedSpan CreateMatchedSpan(ReadOnlySpan<char> pattern, ReadOnlySpan<char> word, BitSpan isSubwordStart, int wordPosition)
@@ -439,7 +391,11 @@ namespace VSIntelliSenseTweaks
             public int StartInPattern => startInPattern;
             public int End => start + length;
             public int EndInPattern => startInPattern + length;
-            public int Length => length;
+            public int Length
+            {
+                get => length;
+                set => length = (byte)value;
+            }
             public bool IsSubwordStart => isSubwordStart == 1;
             public int IsSubwordStart_AsInt => isSubwordStart;
 

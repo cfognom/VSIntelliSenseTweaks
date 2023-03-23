@@ -156,21 +156,7 @@ namespace VSIntelliSenseTweaks
                     var defaults = currentData.Defaults;
                     Debug.Assert(n_completions == initialCompletions.Count);
 
-                    //#region Create 'pattern' and 'antiPattern'
                     int patternLength = Math.Min(textFilter.Length, textFilterMaxLength);
-                    //Span<char> patternStorage = stackalloc char[2 * patternLength];
-                    //var pattern = patternStorage.Slice(0, patternLength);
-                    //var antiPattern = patternStorage.Slice(patternLength, patternLength);
-
-                    //var patternSource = textFilter.AsSpan(0, patternLength);
-                    //patternSource.CopyTo(patternStorage.Slice(0, patternLength));
-                    //for (int i = 0; i < patternLength; i++)
-                    //{
-                    //    char c = pattern[i];
-                    //    antiPattern[i] = char.IsUpper(c) ? char.ToLowerInvariant(c) : char.ToUpperInvariant(c);
-                    //}
-                    //#endregion
-
                     var pattern = textFilter.AsSpan(0, patternLength);
 
                     BitField64 availableFilters = default;
@@ -183,7 +169,7 @@ namespace VSIntelliSenseTweaks
                         if (hasTextFilter)
                         {
                             var word = completion.FilterText.AsSpan();
-                            patternScore = scorer.ScoreWord(pattern, word, out matchedSpans);
+                            patternScore = scorer.ScoreWord(word, pattern, out matchedSpans);
                             if (patternScore == int.MinValue) continue;
                         }
                         else
