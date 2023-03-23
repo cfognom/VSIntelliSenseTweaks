@@ -54,5 +54,16 @@ namespace VSIntelliSenseTweaks.Utilities
             var mask = 1 << bitIndex;
             data[intIndex] &= ~mask;
         }
+
+        public bool[] ToBoolArray()
+        {
+            int l = data.Length * 32;
+            var a = new bool[l];
+            for (int i = 0; i < l; i++)
+            {
+                a[i] = this[i];
+            }
+            return a;
+        }
     }
 }
