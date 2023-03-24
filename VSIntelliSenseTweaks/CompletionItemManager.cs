@@ -453,7 +453,7 @@ namespace VSIntelliSenseTweaks
             var defaultIndexString = key.defaultIndex == int.MaxValue ? "-" : key.defaultIndex.ToString();
             var roslynScoreString = key.roslynScore == 0 ? "-" : key.roslynScore.ToString();
 
-            var debugSuffix = $" (ptrnScr: {patternScoreString}, dfltIdx: {defaultIndexString}, rslnScr: {roslynScoreString}, initIdx: {key.initialIndex})";
+            var debugSuffix = $" (pattScr: {patternScoreString}, dfltIdx: {defaultIndexString}, roslScr: {roslynScoreString}, initIdx: {key.initialIndex})";
             
             var modifiedCompletion = new VSCompletionItem
             (
