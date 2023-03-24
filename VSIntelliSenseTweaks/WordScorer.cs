@@ -1,13 +1,8 @@
-﻿using Microsoft.CodeAnalysis;
-using Microsoft.VisualStudio.Text;
+﻿using Microsoft.VisualStudio.Text;
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Globalization;
 using VSIntelliSenseTweaks.Utilities;
-using static System.Windows.Forms.AxHost;
 
 namespace VSIntelliSenseTweaks
 {
@@ -222,7 +217,15 @@ namespace VSIntelliSenseTweaks
             {
                 var span = data.spans[i];
                 builder[i] = span.ToSpan();
-                score += ScoreSpan(span); 
+                int exactCount = 0;
+                for (int j = 0; j < span.Length; j++)
+                {
+                    if (data.word[span.Start + j] == data.pattern[span.StartInPattern + j])
+                    {
+                        exactCount++;
+                    }
+                }
+                score += ScoreSpan(span, exactCount); 
             }
 
             score -= 4 * (data.word.Length - data.pattern.Length);
@@ -231,12 +234,11 @@ namespace VSIntelliSenseTweaks
             return score;
         }
 
-        static int ScoreSpan(MatchedSpan span)
+        static int ScoreSpan(MatchedSpan span, int exactCount)
         {
-            //int effectiveLength = (4 * span.Length - 3 * span.Inexactness);
-            int effectiveLength = (4 * span.Length);
+            int effectiveLength = (span.Length + 3 * exactCount);
             int score = 4 * effectiveLength - 3;
-            score += span.IsSubwordStart ? 32 : 0;
+            score *= span.IsSubwordStart ? 2 : 1;
             score -= span.Start;
             return score;
         }
