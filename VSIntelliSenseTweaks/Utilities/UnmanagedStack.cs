@@ -3,12 +3,12 @@ using System.Diagnostics;
 
 namespace VSIntelliSenseTweaks.Utilities
 {
-    internal class LightStack<T> where T : unmanaged
+    internal class UnmanagedStack<T> where T : unmanaged
     {
         public T[] array;
         public int count;
 
-        public LightStack(int initialCapacity)
+        public UnmanagedStack(int initialCapacity)
         {
             this.array = new T[initialCapacity];
             this.count = 0;

@@ -50,7 +50,7 @@
     <Compile Include="Utilities\BitSpan.cs" />
     <Compile Include="Utilities\CharKind.cs" />
     <Compile Include="Utilities\BitField64.cs" />
-    <Compile Include="Utilities\LightStack.cs" />
+    <Compile Include="Utilities\UnmanagedStack.cs" />
     <Compile Include="Utilities\Helpers.cs" />
     <Compile Include="VSIntellisenseTweaksPackage.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
