@@ -30,11 +30,14 @@ namespace VSIntelliSenseTweaks
                 charToSpan = charToSpan,
                 spans = spans,
                 isSubwordStart = isSubwordStart,
+                n_subwords = n_subwords,
                 spanCount = 0,
             };
 
             if (FindMatchingSpans(ref data))
             {
+                //Span<Span> subwordSpans = n_subwords <= 128 ? stackalloc Span[n_subwords] : new Span[n_subwords];
+                //PopulateSubwords(wordLength, isSubwordStart, subwordSpans);
                 int score = CompileSpans(ref data, out matchedSpans);
                 return score;
             }
@@ -73,10 +76,19 @@ namespace VSIntelliSenseTweaks
             return n_subwords;
         }
 
-        private struct CharData
+        static void PopulateSubwords(int wordLength, BitSpan isSubwordStart, Span<Span> subwordSpans)
         {
-            byte spanIndex;
-            
+            int j = 0;
+            for (int i = 0; i < subwordSpans.Length; i++)
+            {
+                int start = j;
+                do
+                {
+                    j++;
+                } while (j != wordLength && !isSubwordStart[j]);
+                int length = j - start;
+                subwordSpans[i] = new Span(start, length);
+            }
         }
 
         private ref struct PatternMatchingData
@@ -86,6 +98,7 @@ namespace VSIntelliSenseTweaks
             public Span<byte> charToSpan;
             public Span<MatchedSpan> spans;
             public BitSpan isSubwordStart;
+            public int n_subwords;
             public byte spanCount;
 
             public int GetSpanIndex(int charIndex) => charToSpan[charIndex];
@@ -213,10 +226,12 @@ namespace VSIntelliSenseTweaks
             var builder = ImmutableArray.CreateBuilder<Span>(n_spans);
             builder.Count = n_spans;
             int score = 0;
+            int n_subwordHits = 0;
             for (int i = 0; i < n_spans; i++)
             {
                 var span = data.spans[i];
                 builder[i] = span.ToSpan();
+                if (span.IsSubwordStart) n_subwordHits++;
                 int exactCount = 0;
                 for (int j = 0; j < span.Length; j++)
                 {
@@ -228,7 +243,11 @@ namespace VSIntelliSenseTweaks
                 score += ScoreSpan(span, exactCount); 
             }
 
-            score -= 4 * (data.word.Length - data.pattern.Length);
+            //score -= data.word.Length - data.pattern.Length;
+            int missingSubwordHits = data.n_subwords - n_subwordHits;
+            Debug.Assert(missingSubwordHits >= 0);
+            score -= 8 * missingSubwordHits;
+
             matchedSpans = builder.MoveToImmutable();
 
             return score;
@@ -236,9 +255,9 @@ namespace VSIntelliSenseTweaks
 
         static int ScoreSpan(MatchedSpan span, int exactCount)
         {
-            int effectiveLength = (span.Length + 3 * exactCount);
-            int score = 4 * effectiveLength - 3;
-            score *= span.IsSubwordStart ? 2 : 1;
+            int effectiveLength = span.Length + exactCount;
+            int score = 2 * effectiveLength - 1;
+            score *= span.IsSubwordStart ? 16 : 2;
             score -= span.Start;
             return score;
         }
