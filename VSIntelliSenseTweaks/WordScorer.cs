@@ -62,7 +62,7 @@ namespace VSIntelliSenseTweaks
             for (int i = 0; i < n_chars; i++)
             {
                 bool isSubwordBeginning = i == 0
-                  || (!charKinds[i - 1].IsUpper  && charKinds[i].IsUpper)
+                  || ((!charKinds[i - 1].IsUpper || word[i - 1] == 'I')  && charKinds[i].IsUpper)
                   || (!charKinds[i - 1].IsLetter && charKinds[i].IsLetter)
                   || (i + 1 < n_chars && charKinds[i].IsUpper && !charKinds[i + 1].IsUpper);
 
@@ -243,7 +243,7 @@ namespace VSIntelliSenseTweaks
                 score += ScoreSpan(span, exactCount); 
             }
 
-            //score -= data.word.Length - data.pattern.Length;
+            score -= data.word.Length - data.pattern.Length;
             int missingSubwordHits = data.n_subwords - n_subwordHits;
             Debug.Assert(missingSubwordHits >= 0);
             score -= 8 * missingSubwordHits;
