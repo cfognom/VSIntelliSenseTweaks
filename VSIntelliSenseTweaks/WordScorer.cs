@@ -58,7 +58,7 @@ namespace VSIntelliSenseTweaks
 
             workStack.count = 0;
 
-            if (DeterminePossibleSpans(ref data, ref state))
+            if (OnePass(ref data, ref state))
             {
                 //Span<Span> subwordSpans = n_subwords <= 128 ? stackalloc Span[n_subwords] : new Span[n_subwords];
                 //PopulateSubwords(wordLength, isSubwordStart, subwordSpans);
@@ -189,50 +189,56 @@ namespace VSIntelliSenseTweaks
                 i--;
             }
             Debug.Assert(j == -1);
-
             return true;
         }
 
-        void DeterminePossibleSpans(ref PatternMatchingData data, ref State state)
+        bool OnePass(ref PatternMatchingData data, ref State state)
         {
             int patternLength = data.pattern.Length;
             int i_final = data.word.Length - patternLength;
 
-            int stackCount = workStack.count;
+            int n_matchedInPattern = 0;
 
             for (int i = 0; i <= i_final; i++)
             {
+                int j = 0;
                 int startInPattern = 0;
-                int j = startInPattern;
-                while (j != patternLength)
+                while (true)
                 {
-                    int wordPos = i + j;
-                    if (FuzzyCharEquals(data.word[wordPos], data.pattern[j]))
+                    bool isEnd = j == patternLength;
+                    if (!isEnd && FuzzyCharEquals(data.word[i + j], data.pattern[j]))
                     {
+                        j++;
+                        n_matchedInPattern = Math.Max(n_matchedInPattern, j);
                     }
                     else
                     {
                         if (startInPattern != j)
                         {
-                            int startInWord = i + startInPattern - state.patternSlice.Start;
+                            int startInWord = i + startInPattern;
                             int length = j - startInPattern;
-                            workStack.Push(new MatchedSpan(startInWord, startInPattern, length, data.isSubwordStart[startInWord]));
+                            var newSpan = new MatchedSpan(startInWord, startInPattern, length, data.isSubwordStart[startInWord]);
+                            workStack.Push(newSpan);
                         }
-                        startInPattern = j + 1;
+                        j++;
+                        startInPattern = j;
                     }
 
-                    j++;
-                }
-                if (startInPattern != j)
-                {
-                    int startInWord = i + startInPattern - state.patternSlice.Start;
-                    int length = j - startInPattern;
-                    workStack.Push(new MatchedSpan(startInWord, startInPattern, length, data.isSubwordStart[startInWord]));
+                    if (isEnd || j > n_matchedInPattern)
+                    {
+                        break;
+                    }
                 }
             }
 
-            int pushCount = workStack.count - stackCount;
-            Array.Sort(workStack.array, stackCount, pushCount, new BestSpanLast());
+            if (n_matchedInPattern < patternLength)
+            {
+                return false;
+            }
+
+            Array.Sort(workStack.array, 0, workStack.count, new BestSpanLast());
+
+            
 
             var stateCopy = state;
 
@@ -254,7 +260,7 @@ namespace VSIntelliSenseTweaks
                     stateCopy.patternSlice = new Span(state.patternSlice.Start, popped.StartInPattern - state.patternSlice.Start);
                     Debug.Assert(!stateCopy.wordSlice.IsEmpty);
                     Debug.Assert(!stateCopy.patternSlice.IsEmpty);
-                    OK &= DivideAndConquer(ref data, ref stateCopy);
+                    OK &= OnePass(ref data, ref stateCopy);
                 }
 
                 if (!OK) continue;
@@ -266,7 +272,7 @@ namespace VSIntelliSenseTweaks
                     stateCopy.patternSlice = new Span(popped.EndInPattern, state.patternSlice.End - popped.EndInPattern);
                     Debug.Assert(!stateCopy.wordSlice.IsEmpty);
                     Debug.Assert(!stateCopy.patternSlice.IsEmpty);
-                    OK &= DivideAndConquer(ref data, ref stateCopy);
+                    OK &= OnePass(ref data, ref stateCopy);
                 }
 
                 if (OK)
@@ -429,6 +435,15 @@ namespace VSIntelliSenseTweaks
             result |= comp == 32;
             result |= comp == -32;
             return result;
+        }
+
+        private struct FirstSpanFirst : IComparer<MatchedSpan>
+        {
+            public int Compare(MatchedSpan x, MatchedSpan y)
+            {
+                int comp = x.Start - y.Start;
+                return comp;
+            }
         }
 
         private struct BestSpanLast : IComparer<MatchedSpan>
