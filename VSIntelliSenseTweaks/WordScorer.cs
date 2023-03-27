@@ -21,13 +21,21 @@ namespace VSIntelliSenseTweaks
             int wordLength = word.Length;
             int patternLength = pattern.Length;
             Debug.Assert(patternLength > 0);
+            Debug.Assert(patternLength <= 256);
+
+            Span<AmbiguousRange> ranges = stackalloc AmbiguousRange[patternLength];
+
+            if (!Prospect(word, pattern, ref ranges))
+            {
+                matchedSpans = default;
+                return int.MinValue;
+            }
 
             int n_ints = BitSpan.GetRequiredIntCount(wordLength + 1);
             Span<int> ints = n_ints <= 256 ? stackalloc int[n_ints] : new int[n_ints];
             var isSubwordStart = new BitSpan(ints);
             int n_subwords = DetermineSubwords(word, isSubwordStart);
 
-            Debug.Assert(patternLength <= 256);
             Span<MatchedSpan> spans = stackalloc MatchedSpan[patternLength];
             Span<byte> charToSpan = stackalloc byte[patternLength];
 
@@ -50,7 +58,7 @@ namespace VSIntelliSenseTweaks
 
             workStack.count = 0;
 
-            if (DivideAndConquer(ref data, ref state))
+            if (DeterminePossibleSpans(ref data, ref state))
             {
                 //Span<Span> subwordSpans = n_subwords <= 128 ? stackalloc Span[n_subwords] : new Span[n_subwords];
                 //PopulateSubwords(wordLength, isSubwordStart, subwordSpans);
@@ -112,6 +120,7 @@ namespace VSIntelliSenseTweaks
             public ReadOnlySpan<char> word;
             public ReadOnlySpan<char> pattern;
             public Span<byte> charToSpan;
+            public Span<AmbiguousRange> charRegions;
             public Span<MatchedSpan> spans;
             public BitSpan isSubwordStart;
             public int n_subwords;
@@ -135,20 +144,69 @@ namespace VSIntelliSenseTweaks
             public byte spanCount;
         }
 
-        bool DivideAndConquer(ref PatternMatchingData data, ref State state)
+        private struct AmbiguousRange
         {
-            int patternLength = state.patternSlice.Length;
-            int i_final = state.wordSlice.End - patternLength;
+            public short minPos;
+            public short maxPos;
+
+            public bool IsInRange(int index)
+            {
+                return minPos <= index && index <= maxPos;
+            }
+        }
+
+        bool Prospect(ReadOnlySpan<char> word, ReadOnlySpan<char> pattern, Span<AmbiguousRange> ranges)
+        {
+            int patternLength = pattern.Length;
+            Debug.Assert(patternLength == ranges.Length);
+            int i = 0;
+            int j = 0;
+            while (i < word.Length && j < patternLength)
+            {
+                if (FuzzyCharEquals(word[i], pattern[j]))
+                {
+                    ranges[j].minPos = (short)i;
+                    j++;
+                }
+                i++;
+            }
+
+            if (j != patternLength)
+            {
+                return false;
+            }
+
+            i--;
+            j--;
+
+            while (j > -1)
+            {
+                if (FuzzyCharEquals(word[i], pattern[j]))
+                {
+                    ranges[j].maxPos = (short)i;
+                    j--;
+                }
+                i--;
+            }
+            Debug.Assert(j == -1);
+
+            return true;
+        }
+
+        void DeterminePossibleSpans(ref PatternMatchingData data, ref State state)
+        {
+            int patternLength = data.pattern.Length;
+            int i_final = data.word.Length - patternLength;
 
             int stackCount = workStack.count;
 
-            for (int i = state.wordSlice.Start; i <= i_final; i++)
+            for (int i = 0; i <= i_final; i++)
             {
-                int startInPattern = state.patternSlice.Start;
+                int startInPattern = 0;
                 int j = startInPattern;
-                while (j != state.patternSlice.End)
+                while (j != patternLength)
                 {
-                    int wordPos = i + j - state.patternSlice.Start;
+                    int wordPos = i + j;
                     if (FuzzyCharEquals(data.word[wordPos], data.pattern[j]))
                     {
                     }
