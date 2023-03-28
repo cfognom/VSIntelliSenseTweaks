@@ -189,6 +189,7 @@ namespace VSIntelliSenseTweaks
                         if (defaultIndex == -1) defaultIndex = int.MaxValue;
 
                         int roslynScore = GetRoslynScore(completion);
+                        patternScore += roslynScore * pattern.Length / 64;
 
                         var key = new CompletionItemKey
                         {
