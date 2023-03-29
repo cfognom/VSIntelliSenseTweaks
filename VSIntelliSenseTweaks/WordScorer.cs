@@ -438,11 +438,7 @@ namespace VSIntelliSenseTweaks
 
             if (n_unmatchedChars == 0)
             {
-                score += 256 * data.word.Length;
-            }
-            if (n_unmatchedSubwords == 0)
-            {
-                score += 16 * data.word.Length;
+                score *= 2;
             }
 
             matchedSpans = builder.MoveToImmutable();
