@@ -26,9 +26,13 @@ using VSCompletionItem = Microsoft.VisualStudio.Language.Intellisense.AsyncCompl
 namespace VSIntelliSenseTweaks
 {
     [Export(typeof(IAsyncCompletionItemManagerProvider))]
+    [Name(nameof(VSIntelliSenseTweaksCompletionItemManagerProvider))]
     [ContentType("CSharp")]
-    [Name("CustomCompletionItemManagerProvider")]
-    internal class CompletionItemManagerProvider : IAsyncCompletionItemManagerProvider
+    [ContentType("CSS")]
+    [ContentType("XAML")]
+    [ContentType("XML")]
+    [TextViewRole(PredefinedTextViewRoles.PrimaryDocument)]
+    internal class VSIntelliSenseTweaksCompletionItemManagerProvider : IAsyncCompletionItemManagerProvider
     {
         public IAsyncCompletionItemManager GetOrCreate(ITextView textView)
         {
