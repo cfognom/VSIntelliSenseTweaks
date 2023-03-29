@@ -51,7 +51,7 @@ namespace VSIntelliSenseTweaks
         CompletionItemKey[] keys;
         int n_completions;
 
-        WordScorer scorer = new WordScorer(4096);
+        WordScorer scorer = new WordScorer(256);
 
         CompletionFilterManager filterManager;
         bool hasFilterManager;
