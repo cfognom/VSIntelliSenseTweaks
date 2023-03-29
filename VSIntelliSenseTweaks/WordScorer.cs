@@ -449,10 +449,11 @@ namespace VSIntelliSenseTweaks
 
         static bool FuzzyCharEquals(char a, char b)
         {
+            // May need to be improved if non-ascii chars are used.
             int comp = a - b;
             bool result = comp == 0;
-            result |= comp == 32;
-            result |= comp == -32;
+            result |= comp ==  32 && a >= 'a' && b <= 'Z';
+            result |= comp == -32 && a <= 'Z' && b >= 'a';
             return result;
         }
 
