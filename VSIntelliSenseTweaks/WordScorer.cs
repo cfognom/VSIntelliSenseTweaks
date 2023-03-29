@@ -24,6 +24,12 @@ namespace VSIntelliSenseTweaks
             Debug.Assert(patternLength > 0);
             Debug.Assert(patternLength <= 256);
 
+            if (wordLength < patternLength)
+            {
+                matchedSpans = default;
+                return int.MinValue;
+            }
+
             Span<CharRange> charRanges = stackalloc CharRange[patternLength];
 
             if (!Prospect(word, pattern, charRanges))
@@ -158,19 +164,19 @@ namespace VSIntelliSenseTweaks
             Debug.Assert(patternLength == ranges.Length);
             int i = 0;
             int j = 0;
-            while (i < wordLength && j < patternLength)
+            while (j < patternLength)
             {
+                if (patternLength - j > wordLength - i)
+                {
+                    return false;
+                }
+
                 if (FuzzyCharEquals(word[i], pattern[j]))
                 {
                     ranges[j].minPos = (short)i;
                     j++;
                 }
                 i++;
-            }
-
-            if (j != patternLength)
-            {
-                return false;
             }
 
             i = wordLength - 1;
