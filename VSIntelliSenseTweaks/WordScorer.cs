@@ -429,9 +429,21 @@ namespace VSIntelliSenseTweaks
                 score += ScoreSpan(span, exactCount); 
             }
 
-            score -= (data.word.Length - data.pattern.Length);
-            score -= 16 * (data.n_subwords - n_subwordHits);
+            int n_unmatchedChars = data.word.Length - data.pattern.Length;
+            int n_unmatchedSubwords = data.n_subwords - n_subwordHits;
+
+            score -= n_unmatchedChars;
+            score -= 16 * n_unmatchedSubwords;
             score -= 16 * n_spans;
+
+            if (n_unmatchedChars == 0)
+            {
+                score += 256 * data.word.Length;
+            }
+            if (n_unmatchedSubwords == 0)
+            {
+                score += 16 * data.word.Length;
+            }
 
             matchedSpans = builder.MoveToImmutable();
 

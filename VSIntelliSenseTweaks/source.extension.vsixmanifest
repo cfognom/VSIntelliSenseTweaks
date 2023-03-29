@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="VSIntelliSenseTweaks.91be3b0f-9921-411a-a154-a6e067dda3fc" Version="1.3.3" Language="en-US" Publisher="Carl Foghammar Nömtak" />
+        <Identity Id="VSIntelliSenseTweaks.91be3b0f-9921-411a-a154-a6e067dda3fc" Version="1.3.4" Language="en-US" Publisher="Carl Foghammar Nömtak" />
         <DisplayName>VSIntelliSenseTweaks</DisplayName>
         <Description xml:space="preserve">Tweaks IntelliSense completion filtering to be more like VS code.</Description>
         <Preview>true</Preview>
