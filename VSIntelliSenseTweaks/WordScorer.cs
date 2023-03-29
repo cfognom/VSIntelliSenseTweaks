@@ -119,18 +119,18 @@ namespace VSIntelliSenseTweaks
             public Span<MatchedSpan> spans;
             public BitSpan isSubwordStart;
             public int n_subwords;
-            public byte n_spans;
+            public int n_spans;
 
-            public byte GetSpanIndex(int charIndex) => charToSpan[charIndex];
+            public int GetSpanIndex(int charIndex) => charToSpan[charIndex];
 
             public void AddSpan(MatchedSpan span)
             {
-                byte index = n_spans++;
+                var index = n_spans++;
                 spans[index] = span;
                 int i_end = span.EndInPattern;
                 for (int i = span.StartInPattern; i < i_end; i++)
                 {
-                    charToSpan[i] = index;
+                    charToSpan[i] = (byte)index;
                 }
             }
 
@@ -261,10 +261,10 @@ namespace VSIntelliSenseTweaks
 
                 // newSpan.StartInPattern < n_matchedInPattern
 
-                var existingSpanIndex = data.charToSpan[newSpan.StartInPattern];
-                var existingSpan = data.spans[existingSpanIndex];
+                int existingSpanIndex = data.charToSpan[newSpan.StartInPattern];
+                MatchedSpan existingSpan = data.spans[existingSpanIndex];
 
-                var endSpanIndex = newSpan.EndInPattern < n_matchedInPattern ?
+                int endSpanIndex = newSpan.EndInPattern < n_matchedInPattern ?
                     data.charToSpan[newSpan.EndInPattern - 1] + 1 : data.n_spans;
 
                 int n_subs_before = 0;
