@@ -497,55 +497,52 @@ namespace VSIntelliSenseTweaks
 
         private struct MatchedSpan
         {
-            short start;
+            // Kept small to decrease allocation size.
+            ushort isSubwordStart_start;
             byte startInPattern;
             byte length;
-            byte isSubwordStart;
 
-            public bool IsValid => length > 0;
-            public int Start
-            {
-                get => start;
-                set => start = (short)value;
-            }
-            public int StartInPattern
-            {
-                get => startInPattern;
-                set => startInPattern = (byte)value;
-            }
-            public int End => start + length;
+            public bool IsValid => length != 0;
+            public int Start => isSubwordStart_start & ((1 << 15) - 1);
+            public int StartInPattern => startInPattern;
+            public int End => Start + length;
             public int EndInPattern => startInPattern + length;
-            public int Length
-            {
-                get => length;
-                set => length = (byte)value;
-            }
-            public bool IsSubwordStart => isSubwordStart == 1;
-            public int IsSubwordStart_AsInt => isSubwordStart;
+            public int Length => length;
+            public bool IsSubwordStart => IsSubwordStart_AsInt == 1;
+            public int IsSubwordStart_AsInt => isSubwordStart_start >> 15;
 
             public MatchedSpan(int start, int startInPattern, int length, bool isSubwordStart)
             {
-                this.start = (short)start;
+                Debug.Assert(start >= 0);
+                Debug.Assert(start < 1 << 15);
+                Debug.Assert(startInPattern >= 0);
+                Debug.Assert(startInPattern <= byte.MaxValue);
+                Debug.Assert(length >= 0);
+                Debug.Assert(length <= byte.MaxValue);
+                this.isSubwordStart_start = (ushort)start;
                 this.startInPattern = (byte)startInPattern;
                 this.length = (byte)length;
-                this.isSubwordStart = isSubwordStart ? (byte)1 : (byte)0;
+                if (isSubwordStart)
+                {
+                    this.isSubwordStart_start |= 1 << 15;
+                }
             }
 
             public Span ToSpan()
             {
-                return new Span(start, length);
+                return new Span(Start, Length);
             }
 
             public MatchedSpan TrimFront(int count)
             {
                 Debug.Assert(count < length);
-                return new MatchedSpan(start + count, startInPattern + count, length - count, false);
+                return new MatchedSpan(Start + count, StartInPattern + count, Length - count, false);
             }
 
             public MatchedSpan TrimBack(int count)
             {
                 Debug.Assert(count < length);
-                return new MatchedSpan(start, startInPattern, length - count, IsSubwordStart);
+                return new MatchedSpan(Start, StartInPattern, Length - count, IsSubwordStart);
             }
         }
     }
