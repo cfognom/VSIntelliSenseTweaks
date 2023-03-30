@@ -140,12 +140,6 @@ namespace VSIntelliSenseTweaks
             }
         }
 
-        struct MatchedSpanAndScore
-        {
-            public MatchedSpan span;
-            public int score;
-        }
-
         private struct CharRange
         {
             public short minPos;
@@ -247,163 +241,115 @@ namespace VSIntelliSenseTweaks
             {
                 var newSpan = matchedSpans.array[i];
 
-                if (newSpan.StartInPattern > n_matchedInPattern)
-                {
-                    continue;
-                }
-
-                if (newSpan.StartInPattern == n_matchedInPattern)
-                {
-                    data.AddSpan(newSpan);
-                    n_matchedInPattern = newSpan.EndInPattern;
-                    continue;
-                }
-
-                // newSpan.StartInPattern < n_matchedInPattern
-
-                int existingSpanIndex = data.charToSpan[newSpan.StartInPattern];
-                MatchedSpan existingSpan = data.spans[existingSpanIndex];
-
-                int endSpanIndex = newSpan.EndInPattern < n_matchedInPattern ?
-                    data.charToSpan[newSpan.EndInPattern - 1] + 1 : data.n_spans;
-
-                int n_subs_before = 0;
-                int n_spans_before = endSpanIndex - existingSpanIndex;
-                for (int j = existingSpanIndex; j < endSpanIndex; j++)
-                {
-                    n_subs_before += data.spans[j].IsSubwordStart_AsInt;
-                }
-                int n_subs_after = newSpan.IsSubwordStart_AsInt;
-                int n_spans_after;
-                if (newSpan.StartInPattern != existingSpan.StartInPattern)
-                {
-                    n_spans_after = 2;
-                    n_subs_after++;
-                }
-                else
-                {
-                    n_spans_after = 1;
-                }
-
-                bool merge = false;
-                if (n_subs_after > n_subs_before)
-                    merge = true;
-                else if (n_subs_after == n_subs_before && n_spans_after < n_spans_before)
-                    merge = true;
-                else if (n_subs_after == n_subs_before && n_spans_after == n_spans_before && newSpan.EndInPattern > n_matchedInPattern)
-                    merge = true;
-
-                if (merge)
-                {
-                    data.n_spans = existingSpanIndex;
-                    int overlap = existingSpan.EndInPattern - newSpan.StartInPattern;
-                    Debug.Assert(overlap > 0);
-                    if (overlap < existingSpan.Length)
-                    {
-                        data.AddSpan(existingSpan.TrimBack(overlap));
-                    }
-                    data.AddSpan(newSpan);
-                    n_matchedInPattern = newSpan.EndInPattern;
-                }
-                else if (newSpan.EndInPattern > n_matchedInPattern)
-                {
-                    int trimCount = n_matchedInPattern - newSpan.StartInPattern;
-                    Debug.Assert(trimCount > 0);
-                    newSpan = newSpan.TrimFront(trimCount);
-                    Debug.Assert(!data.isSubwordStart[newSpan.Start]);
-                    data.AddSpan(newSpan);
-                    n_matchedInPattern = newSpan.EndInPattern;
-                }
-
-                //if (newSpan.StartInPattern == existingSpan.StartInPattern)
-                //{
-                //    if (IsNewBetter())
-                //    {
-                //        data.n_spans = existingSpanIndex;
-                //        data.AddSpan(newSpan);
-                //        n_matchedInPattern = newSpan.EndInPattern;
-                //    }
-
-                //    bool IsNewBetter()
-                //    {
-                //        if (newSpan.IsSubwordStart_AsInt > existingSpan.IsSubwordStart_AsInt)
-                //        //if (newSpan.IsSubwordStart)
-                //            return true;
-
-                //        //if (newSpan.Length > existingSpan.Length)
-                //        //    return true;
-
-                //        //if (newSpan.Start < existingSpan.Start)
-                //        //    return true;
-
-                //        return false;
-                //    }
-                //}
-                //else
-                //{
-                //    if (IsNewBetter())
-                //    {
-                //        data.n_spans = existingSpanIndex;
-                //        int overlap = existingSpan.EndInPattern - newSpan.StartInPattern;
-                //        Debug.Assert(overlap > 0);
-                //        data.AddSpan(existingSpan.TrimBack(overlap));
-                //        data.AddSpan(newSpan);
-                //        n_matchedInPattern = newSpan.EndInPattern;
-                //    }
-                //    else if (newSpan.EndInPattern > n_matchedInPattern)
-                //    {
-                //        int trimCount = n_matchedInPattern - newSpan.StartInPattern;
-                //        Debug.Assert(trimCount > 0);
-                //        newSpan = newSpan.TrimFront(trimCount);
-                //        Debug.Assert(!data.isSubwordStart[newSpan.Start]);
-                //        data.AddSpan(newSpan);
-                //        n_matchedInPattern = newSpan.EndInPattern;
-                //    }
-
-                //    bool IsNewBetter()
-                //    {
-                //        //if (newSpan.IsSubwordStart_AsInt > existingSpan.IsSubwordStart_AsInt)
-                //        if (newSpan.IsSubwordStart)
-                //            return true;
-
-                //        if (newSpan.Length > existingSpan.Length)
-                //            return true;
-
-                //        if (newSpan.Start < existingSpan.Start)
-                //            return true;
-
-                //        return false;
-                //    }
-                //}
-
-                //if (comparer.Compare(existingSpan, newSpan) < 0)
-                //{
-                //    data.n_spans = existingSpanIndex;
-                //    int overlap = existingSpan.EndInPattern - newSpan.StartInPattern;
-                //    Debug.Assert(overlap > 0);
-                //    if (overlap < existingSpan.Length)
-                //    {
-                //        data.AddSpan(existingSpan.TrimBack(overlap));
-                //    }
-                //    data.AddSpan(newSpan);
-                //    n_matchedInPattern = newSpan.EndInPattern;
-                //}
-                //else if (newSpan.EndInPattern > n_matchedInPattern)
-                //{
-                //    int trimCount = n_matchedInPattern - newSpan.StartInPattern;
-                //    Debug.Assert(trimCount > 0);
-                //    newSpan = newSpan.TrimFront(trimCount);
-                //    Debug.Assert(!data.isSubwordStart[newSpan.Start]);
-                //    data.AddSpan(newSpan);
-                //    n_matchedInPattern = newSpan.EndInPattern;
-                //}
-                //else if (newSpan.EndInPattern == n_matchedInPattern)
-                //{
-                //    //throw new Exception();
-                //}
+                ConsiderSpan(ref data, ref n_matchedInPattern, newSpan);
             }
 
             Debug.Assert(n_matchedInPattern == data.pattern.Length);
+        }
+
+        private static void ConsiderSpan(ref PatternMatchingData data, ref int n_matchedInPattern, MatchedSpan newSpan)
+        {
+            if (newSpan.StartInPattern > n_matchedInPattern)
+            {
+                return;
+            }
+
+            if (newSpan.StartInPattern == n_matchedInPattern)
+            {
+                data.AddSpan(newSpan);
+                n_matchedInPattern = newSpan.EndInPattern;
+                return;
+            }
+
+            // newSpan.StartInPattern < n_matchedInPattern
+
+            int existingSpanIndex = data.charToSpan[newSpan.StartInPattern];
+            MatchedSpan existingSpan = data.spans[existingSpanIndex];
+
+            if (ShouldMerge(ref data, ref n_matchedInPattern))
+            {
+                data.n_spans = existingSpanIndex;
+                int overlap = existingSpan.EndInPattern - newSpan.StartInPattern;
+                Debug.Assert(overlap > 0);
+                if (overlap < existingSpan.Length)
+                {
+                    data.AddSpan(existingSpan.TrimBack(overlap));
+                }
+                data.AddSpan(newSpan);
+                n_matchedInPattern = newSpan.EndInPattern;
+            }
+            else if (newSpan.EndInPattern > n_matchedInPattern)
+            {
+                int trimCount = n_matchedInPattern - newSpan.StartInPattern;
+                Debug.Assert(trimCount > 0);
+                newSpan = newSpan.TrimFront(trimCount);
+                Debug.Assert(!data.isSubwordStart[newSpan.Start]);
+                data.AddSpan(newSpan);
+                n_matchedInPattern = newSpan.EndInPattern;
+            }
+
+            bool ShouldMerge(ref PatternMatchingData data_, ref int n_matchedInPattern_)
+            {
+                if (newSpan.StartInPattern == existingSpan.StartInPattern)
+                {
+                    if (newSpan.IsSubwordStart_AsInt > existingSpan.IsSubwordStart_AsInt)
+                        return true;
+
+                    //if (newSpan.Length > existingSpan.Length)
+                    //    return true;
+
+                    return false;
+                }
+
+                if (newSpan.IsSubwordStart)
+                    return true;
+
+                return false;
+
+                int i_end = newSpan.EndInPattern < n_matchedInPattern_ ?
+                    data_.charToSpan[newSpan.EndInPattern - 1] + 1 : data_.n_spans;
+
+                int n_subwordsBefore = 0;
+                int n_nonSubwordCharsBefore = 0;
+                int n_spansBefore = i_end - existingSpanIndex;
+                for (int i = existingSpanIndex; i < i_end; i++)
+                {
+                    var span = data_.spans[i];
+                    int isSubword = span.IsSubwordStart_AsInt;
+                    n_subwordsBefore += span.IsSubwordStart_AsInt;
+                    if (!span.IsSubwordStart) n_nonSubwordCharsBefore += span.Length;
+                }
+
+                int n_subwordsAfter = newSpan.IsSubwordStart_AsInt;
+                int n_nonSubwordCharsAfter = n_subwordsAfter * newSpan.Length;
+                int n_spansAfter = 1;
+                if (newSpan.StartInPattern != existingSpan.StartInPattern)
+                {
+                    n_subwordsAfter += 1;
+                    if (!existingSpan.IsSubwordStart) n_nonSubwordCharsBefore += (newSpan.StartInPattern - existingSpan.StartInPattern);
+                    n_spansAfter += 1;
+                }
+
+                if (n_subwordsAfter > n_subwordsBefore)
+                    return true;
+
+                if (n_subwordsAfter < n_subwordsBefore)
+                    return false;
+
+                if (n_spansAfter < n_spansBefore)
+                    return true;
+
+                if (n_spansAfter > n_spansBefore)
+                    return false;
+
+                if (n_nonSubwordCharsAfter < n_nonSubwordCharsBefore)
+                    return true;
+
+                if (newSpan.EndInPattern > n_matchedInPattern_)
+                    return true;
+
+                return false;
+            }
         }
 
         static int CompileSpans(ref PatternMatchingData data, out ImmutableArray<Span> matchedSpans)
@@ -413,28 +359,29 @@ namespace VSIntelliSenseTweaks
             builder.Count = n_spans;
             int score = 0;
             int n_subwordHits = 0;
+            int inexactCount = 0;
             for (int i = 0; i < n_spans; i++)
             {
                 var span = data.spans[i];
                 builder[i] = span.ToSpan();
                 if (span.IsSubwordStart) n_subwordHits++;
-                int exactCount = 0;
                 for (int j = 0; j < span.Length; j++)
                 {
-                    if (data.word[span.Start + j] == data.pattern[span.StartInPattern + j])
+                    if (data.word[span.Start + j] != data.pattern[span.StartInPattern + j])
                     {
-                        exactCount++;
+                        inexactCount++;
                     }
                 }
-                score += ScoreSpan(span, exactCount); 
+                score += ScoreSpan(span, inexactCount); 
             }
 
             int n_unmatchedChars = data.word.Length - data.pattern.Length;
             int n_unmatchedSubwords = data.n_subwords - n_subwordHits;
 
             score -= n_unmatchedChars;
-            score -= 16 * n_unmatchedSubwords;
+            score -= 32 * n_unmatchedSubwords;
             score -= 16 * n_spans;
+            score -= inexactCount;
 
             if (n_unmatchedChars == 0)
             {
@@ -448,10 +395,11 @@ namespace VSIntelliSenseTweaks
 
         static int ScoreSpan(MatchedSpan span, int exactCount)
         {
-            int effectiveLength = span.Length + exactCount;
+            int effectiveLength = span.Length;
             int score = 32 * effectiveLength;
             score *= span.IsSubwordStart ? 4 : 1;
-            score -= span.Start;
+            //TODO: try without start penalty.
+            //score -= span.Start;
             return score;
         }
 
