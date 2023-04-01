@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Windows.Markup;
 using VSIntelliSenseTweaks.Utilities;
 
-namespace VSIntelliSenseTweaks
+namespace VSIntelliSenseTweaks.Utilities
 {
     public struct WordScorer
     {
