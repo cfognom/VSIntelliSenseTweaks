@@ -203,21 +203,31 @@ namespace VSIntelliSenseTweaks
                 bool isEnd = j > j_final;
                 while (!isEnd)
                 {
-                    bool eq = FuzzyCharEquals(data.word[i], data.pattern[j]);
-                    if (eq) length++;
+                    if (FuzzyCharEquals(data.word[i], data.pattern[j]))
+                    {
+                        length++;
+                    }
+                    else if (length > 0)
+                    {
+                        MakeSpan(ref data, this.matchedSpans);
+                    }
 
                     i++;
                     j++;
 
                     isEnd = j > j_final;
 
-                    if ((!eq || isEnd || data.isSubwordStart[i]) && length > 0)
+                    if (length > 0 && (isEnd || data.isSubwordStart[i]))
                     {
-                        int startInWord = i - length - (!eq ? 1 : 0);
-                        int startInPattern = j - length - (!eq ? 1 : 0);
-                        var newSpan = new MatchedSpan(startInWord, startInPattern, length, data.isSubwordStart[startInWord]);
-                        //int score = ScoreSpan(newSpan, length);
-                        this.matchedSpans.Push(newSpan);
+                        MakeSpan(ref data, this.matchedSpans);
+                    }
+
+                    void MakeSpan(ref PatternMatchingData _data, UnmanagedStack<MatchedSpan> matchedSpans)
+                    {
+                        int startInWord = i - length;
+                        int startInPattern = j - length;
+                        var newSpan = new MatchedSpan(startInWord, startInPattern, length, _data.isSubwordStart[startInWord]);
+                        matchedSpans.Push(newSpan);
                         length = 0;
                     }
                 }
