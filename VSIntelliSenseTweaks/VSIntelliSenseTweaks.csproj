@@ -46,6 +46,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="MultiSelectionCompletionHandler.cs" />
     <Compile Include="Utilities\Measurement.cs" />
     <Compile Include="Utilities\BitSpan.cs" />
     <Compile Include="Utilities\CharKind.cs" />
