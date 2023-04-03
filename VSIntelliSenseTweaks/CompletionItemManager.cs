@@ -122,6 +122,11 @@ namespace VSIntelliSenseTweaks
         {
             using (new Measurement(nameof(UpdateCompletionList)))
             {
+                var textFilter = session.ApplicableToSpan.GetText(currentData.Snapshot);
+                bool hasTextFilter = textFilter.Length > 0;
+
+                if (ShouldDismiss()) return null;
+
                 var filterStates = currentData.SelectedFilters; // The types of filters displayed in the IntelliSense widget.
                 if (!hasFilterManager)
                 {
@@ -130,8 +135,6 @@ namespace VSIntelliSenseTweaks
                 }
                 filterManager.UpdateActiveFilters(filterStates);
 
-                var textFilter = session.ApplicableToSpan.GetText(currentData.Snapshot);
-                bool hasTextFilter = textFilter.Length > 0;
 
                 int n_eligibleCompletions = 0;
                 using (new Measurement(nameof(DetermineEligibleCompletions)))
@@ -153,6 +156,15 @@ namespace VSIntelliSenseTweaks
                 Debug.Assert(!cancellationToken.IsCancellationRequested);
 
                 return result;
+
+                bool ShouldDismiss()
+                {
+                    // Dismisses if first char in pattern is a number and not after a '.'.
+                    int position = session.ApplicableToSpan.GetStartPoint(currentData.Snapshot).Position;
+                    return hasTextFilter
+                        && char.IsNumber(currentData.Snapshot[position])
+                        && position > 0 && currentData.Snapshot[position - 1] != '.';
+                }
 
                 void DetermineEligibleCompletions()
                 {
