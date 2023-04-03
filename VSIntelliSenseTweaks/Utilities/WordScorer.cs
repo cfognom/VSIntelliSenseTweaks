@@ -305,8 +305,11 @@ namespace VSIntelliSenseTweaks.Utilities
                     if (newSpan.IsSubwordStart_AsInt > existingSpan.IsSubwordStart_AsInt)
                         return true;
 
-                    //if (newSpan.Length > existingSpan.Length)
-                    //    return true;
+                    if (newSpan.IsSubwordStart_AsInt < existingSpan.IsSubwordStart_AsInt)
+                        return false;
+
+                    if (newSpan.Length > existingSpan.Length)
+                        return true;
 
                     return false;
                 }
