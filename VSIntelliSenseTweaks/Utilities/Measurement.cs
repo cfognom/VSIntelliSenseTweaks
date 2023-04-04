@@ -1,6 +1,5 @@
 ﻿#if DEBUG
-#define INCLUDE_DEBUG_SUFFIX
-#define DEBUG_TIME
+#define MEASURE_TIME
 #endif
 
 using System;
@@ -11,7 +10,7 @@ namespace VSIntelliSenseTweaks.Utilities
 {
     struct Measurement : IDisposable
     {
-#if DEBUG
+#if MEASURE_TIME
         static int depth = 0;
         static StringBuilder builder = new StringBuilder();
         static int backupLength = -1;
@@ -21,7 +20,7 @@ namespace VSIntelliSenseTweaks.Utilities
 #endif
         public Measurement(string name) : this()
         {
-#if DEBUG
+#if MEASURE_TIME
             builder.AppendLine();
             for (int i = 0; i < depth; i++)
             {
@@ -45,7 +44,7 @@ namespace VSIntelliSenseTweaks.Utilities
 
         public void Dispose()
         {
-#if DEBUG
+#if MEASURE_TIME
             var ms = watch.ElapsedMilliseconds;
             depth--;
             if (backupLength >= 0)

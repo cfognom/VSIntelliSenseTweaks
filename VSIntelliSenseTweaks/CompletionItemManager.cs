@@ -1,6 +1,5 @@
 ﻿#if DEBUG
 #define INCLUDE_DEBUG_SUFFIX
-#define DEBUG_TIME
 #endif
 
 using Microsoft;
@@ -68,6 +67,7 @@ namespace VSIntelliSenseTweaks
 
         public Task<CompletionList<VSCompletionItem>> SortCompletionItemListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
         {
+            // Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Implementation.AsyncCompletionSession
             this.session = session;
             this.initialData = data;
             this.cancellationToken = token;
@@ -134,7 +134,6 @@ namespace VSIntelliSenseTweaks
                     this.hasFilterManager = true;
                 }
                 filterManager.UpdateActiveFilters(filterStates);
-
 
                 int n_eligibleCompletions = 0;
                 using (new Measurement(nameof(DetermineEligibleCompletions)))
@@ -282,8 +281,10 @@ namespace VSIntelliSenseTweaks
         {
             if (RoslynCompletionItemGetter == null)
             {
+                // Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncCompletion.CompletionItemData
+                var roslynType = roslynObject.GetType();
                 var input    = Expression.Parameter(typeof(object));
-                var casted   = Expression.Convert(input, roslynObject.GetType());
+                var casted   = Expression.Convert(input, roslynType);
                 var property = Expression.PropertyOrField(casted, "RoslynItem");
                 var lambda   = Expression.Lambda(property, input);
                 RoslynCompletionItemGetter = (Func<object, RoslynCompletionItem>)lambda.Compile();
