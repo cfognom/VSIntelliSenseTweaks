@@ -185,9 +185,9 @@ namespace VSIntelliSenseTweaks
 
                     int patternLength = Math.Min(textFilter.Length, textFilterMaxLength);
                     var pattern = textFilter.AsSpan(0, patternLength);
-
+                    
                     bool includeDebugSuffix = VSIntelliSenseTweaksPackage.Instance?.IncludeDebugSuffix ?? false;
-
+                    
                     BitField64 availableFilters = default;
                     for (int i = 0; i < n_completions; i++)
                     {
@@ -493,7 +493,6 @@ namespace VSIntelliSenseTweaks
             }
         }
 
-        [Conditional("INCLUDE_DEBUG_SUFFIX")]
         private void AddDebugSuffix(ref VSCompletionItem completion, in CompletionItemKey key)
         {
             var patternScoreString = key.patternScore == int.MinValue ? "-" : key.patternScore.ToString();
