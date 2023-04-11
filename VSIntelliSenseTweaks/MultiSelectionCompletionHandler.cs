@@ -51,6 +51,7 @@ namespace VSIntelliSenseTweaks
 
         public bool ExecuteCommand(TypeCharCommandArgs args, CommandExecutionContext executionContext)
         {
+            // TODO: Use binding of edit.completeWord instead of hardcoded keybinding.
             bool didAttemptCompleteWord = args.TypedChar == ' ' && (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
             if (!didAttemptCompleteWord)
