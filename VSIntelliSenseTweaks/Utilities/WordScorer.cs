@@ -3,8 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Windows.Markup;
-using VSIntelliSenseTweaks.Utilities;
 
 namespace VSIntelliSenseTweaks.Utilities
 {
@@ -314,7 +312,7 @@ namespace VSIntelliSenseTweaks.Utilities
                     return false;
                 }
 
-                if (newSpan.IsSubwordStart)
+                if (newSpan.IsSubwordStart && newSpan.EndInPattern > existingSpan.EndInPattern)
                     return true;
 
                 return false;
@@ -418,7 +416,6 @@ namespace VSIntelliSenseTweaks.Utilities
             int effectiveLength = span.Length;
             int score = 32 * effectiveLength;
             score *= span.IsSubwordStart ? 4 : 1;
-            //TODO: try without start penalty.
             //score -= span.Start;
             return score;
         }
@@ -438,27 +435,6 @@ namespace VSIntelliSenseTweaks.Utilities
             public int Compare(MatchedSpan x, MatchedSpan y)
             {
                 int comp = x.Start - y.Start;
-                return comp;
-            }
-        }
-
-        private struct BestSpanLast : IComparer<MatchedSpan>
-        {
-            public int Compare(MatchedSpan x, MatchedSpan y)
-            {
-                int comp = x.IsSubwordStart_AsInt - y.IsSubwordStart_AsInt;
-                if (comp == 0)
-                {
-                    comp = x.Length - y.Length;
-                }
-                //if (comp == 0)
-                //{
-                //    comp = y.Inexactness - x.Inexactness;
-                //}
-                if (comp == 0)
-                {
-                    comp = y.Start - x.Start;
-                }
                 return comp;
             }
         }
