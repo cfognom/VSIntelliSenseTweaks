@@ -14,10 +14,6 @@
     limitations under the License.
 */
 
-#if DEBUG
-#define INCLUDE_DEBUG_SUFFIX
-#endif
-
 using Microsoft;
 using Microsoft.CodeAnalysis.Completion;
 using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion;
