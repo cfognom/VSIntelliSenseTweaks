@@ -194,14 +194,24 @@ namespace VSIntelliSenseTweaks
                         }
 
                         var filterMask = filterManager.CreateFilterMask(completion.Filters);
-                        availableFilters |= filterManager.blacklist & filterMask; // Announce filter availability.
-                        if (filterManager.HasBlacklistedFilter(filterMask)) continue;
+                        var blacklistFilters = filterManager.blacklist & filterMask;
+                        availableFilters |= blacklistFilters; // Announce available blacklist filters.
+                        if (filterManager.HasActiveBlacklistFilter(filterMask)) continue;
 
-                        availableFilters |= filterManager.whitelist & filterMask; // Announce filter availability.
-                        if (!filterManager.HasWhitelistedFilter(filterMask)) continue;
+                        var whitelistFilters = filterManager.whitelist & filterMask;
+                        availableFilters |= whitelistFilters; // Announce available whitelist filters.
+                        if (!filterManager.HasActiveWhitelistFilter(filterMask)) continue;
 
                         int defaultIndex = defaults.IndexOf(completion.FilterText);
                         if (defaultIndex == -1) defaultIndex = int.MaxValue;
+
+                        if (blacklistFilters != default)
+                        {
+                            // We penalize items that have any inactive blacklist filters.
+                            // The current filter settings allow these items to be shown but they should be of lesser value than items without any blacklist filters.
+                            // Currently the only type of blacklist filter that exist in VS is 'add items from unimported namespaces'.
+                            patternScore -= 64 * pattern.Length;
+                        }
 
                         int roslynScore = GetRoslynScore(completion);
                         patternScore += roslynScore * pattern.Length / 64;
@@ -448,13 +458,13 @@ namespace VSIntelliSenseTweaks
                 return mask;
             }
 
-            public bool HasBlacklistedFilter(BitField64 completionFilters)
+            public bool HasActiveBlacklistFilter(BitField64 completionFilters)
             {
                 bool isOnBlacklist = (activeBlacklist & completionFilters) != default;
                 return isOnBlacklist;
             }
 
-            public bool HasWhitelistedFilter(BitField64 completionFilters)
+            public bool HasActiveWhitelistFilter(BitField64 completionFilters)
             {
                 bool isOnWhitelist = (activeWhitelist & completionFilters) != default;
                 return isOnWhitelist;
@@ -462,7 +472,7 @@ namespace VSIntelliSenseTweaks
 
             public bool PassesActiveFilters(BitField64 completionFilters)
             {
-                return !HasBlacklistedFilter(completionFilters) && HasWhitelistedFilter(completionFilters);
+                return !HasActiveBlacklistFilter(completionFilters) && HasActiveWhitelistFilter(completionFilters);
             }
         }
 
