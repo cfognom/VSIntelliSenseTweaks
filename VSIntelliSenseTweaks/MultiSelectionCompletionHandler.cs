@@ -7,59 +7,268 @@ using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Data;
 using Microsoft.VisualStudio.Text.Operations;
 using Microsoft.VisualStudio.Text;
 using System.ComponentModel.Composition;
-using Microsoft.VisualStudio.Text.Editor.Commanding;
+using System.Diagnostics;
+using System;
+using System.Windows.Input;
+using System.Threading;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace VSIntelliSenseTweaks
 {
     [Export(typeof(ICommandHandler))]
     [Name(nameof(MultiSelectionCompletionHandler))]
-    [ContentType("CSharp")]
-    [TextViewRole(PredefinedTextViewRoles.PrimaryDocument)]
+    [ContentType("text")]
+    [TextViewRole(PredefinedTextViewRoles.Interactive)]
     public class MultiSelectionCompletionHandler : ICommandHandler<TypeCharCommandArgs>
     {
-        IEditorCommandHandlerServiceFactory _factory;
+        [Import]
+        IAsyncCompletionBroker completionBroker;
 
         [Import]
-        IAsyncCompletionBroker2 broker;
+        ITextBufferUndoManagerProvider undoManagerProvider;
+
+        SessionController sessionController = new SessionController();
 
         [ImportingConstructor]
-        public MultiSelectionCompletionHandler(IEditorCommandHandlerServiceFactory factory)
+        public MultiSelectionCompletionHandler()
         {
-            _factory = factory;
+            
         }
 
         public string DisplayName => nameof(MultiSelectionCompletionHandler);
 
-        public bool ExecuteCommand(TypeCharCommandArgs args, CommandExecutionContext executionContext)
+        public CommandState GetCommandState(TypeCharCommandArgs args)
         {
             var textView = args.TextView;
-            textView.TextBuffer.Insert(0, "lol");
-            return true;
+            var textBuffer = textView.TextBuffer;
 
-            //if (args != 'j')
-            //    return false;
+            if (!completionBroker.IsCompletionSupported(textBuffer.ContentType, textView.Roles))
+                return CommandState.Unavailable;
 
-            var selections = textView.Selection.SelectedSpans;
-            int n_selections = selections.Count;
-            if (n_selections < 1)
+            return CommandState.Available;
+        }
+
+        public bool ExecuteCommand(TypeCharCommandArgs args, CommandExecutionContext executionContext)
+        {
+            bool didAttemptCompleteWord = args.TypedChar == ' ' && (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+
+            if (!didAttemptCompleteWord)
                 return false;
+
+            var textView = args.TextView;
+            var textBuffer = textView.TextBuffer;
+
+            var selectionBroker = textView.GetMultiSelectionBroker();
+            if (!selectionBroker.HasMultipleSelections)
+                return false;
+
+            if (sessionController.HasSession) // We already have an active session, do not start a new one.
+                return true;
+
+            var selections = selectionBroker.AllSelections;
+            var primarySelection = selectionBroker.PrimarySelection;
+            int n_selections = selections.Count;
+            var textVersion = textBuffer.CurrentSnapshot.Version;
+
+            var cancellationToken = new CancellationToken();
+            var trigger = new CompletionTrigger(CompletionTriggerReason.InvokeAndCommitIfUnique, textView.TextSnapshot);
 
             for (int i = 0; i < n_selections; i++)
             {
                 var selection = selections[i];
-                if (selection.IsEmpty)
+
+                // Triggering a completion session only works when there is one selection.
+                // So we have to make a hack where try each selection one at a time and then
+                // patch up all other selections once an item was committed.
+                selectionBroker.SetSelection(selection);
+                var triggerPoint = selection.InsertionPoint.Position;
+                var potentialSession = completionBroker.TriggerCompletion(textView, trigger, triggerPoint, cancellationToken);
+
+                if (potentialSession == null)
+                    continue;
+
+                potentialSession.OpenOrUpdate(trigger, triggerPoint, cancellationToken);
+
+                _ = potentialSession.GetComputedItems(cancellationToken); // This call dismisses the session if it is started in a bad location (in a string for example).
+
+                if (textBuffer.CurrentSnapshot.Version != textVersion)
                 {
-                    var trigger = new CompletionTrigger(CompletionTriggerReason.Invoke, textView.TextSnapshot, default);
-                    broker.TriggerCompletion(textView, trigger, selection.Start, default);
-                    return true;
+                    // For some reason the text version changed due to starting a session.
+                    selections = selectionBroker.AllSelections;
+                    selection = selections[i];
+                    Debug.WriteLine("Saved you.");
                 }
+
+                if (potentialSession.IsDismissed)
+                    continue;
+
+                // We have a good session.
+
+                // Restore original selections, but use current selection as primary, otherwise session will terminate;
+                selectionBroker.SetSelectionRange(selections, selection);
+
+                this.sessionController.Initialize(textBuffer, undoManagerProvider, potentialSession, selectionBroker, primarySelection);
+
+                return true;
             }
-            return false;
+
+            // Restore original selections if we couldn't begin a session;
+            selectionBroker.SetSelectionRange(selections, primarySelection);
+            return true;
         }
 
-        public CommandState GetCommandState(TypeCharCommandArgs args)
+        private void SelectionBroker_MultiSelectionSessionChanged(object sender, EventArgs e)
         {
-            return CommandState.Available;
+            
+            throw new NotImplementedException();
+        }
+
+        private class SessionController
+        {
+            ITextBuffer textBuffer;
+            ITextBufferUndoManagerProvider undoManagerProvider;
+            IAsyncCompletionSession session;
+            IMultiSelectionBroker selectionBroker;
+
+            IReadOnlyList<Selection> currentSelections;
+            Selection currentPrimarySelection;
+            Selection originalPrimarySelection;
+
+            public void Initialize(
+                ITextBuffer textBuffer,
+                ITextBufferUndoManagerProvider undoManagerProvider,
+                IAsyncCompletionSession session,
+                IMultiSelectionBroker selectionBroker,
+                Selection originalPrimarySelection)
+            {
+                Debug.Assert(!HasSession);
+
+                this.textBuffer = textBuffer;
+                this.undoManagerProvider = undoManagerProvider;
+                this.session = session;
+                this.selectionBroker = selectionBroker;
+                this.currentSelections = selectionBroker.AllSelections;
+                this.currentPrimarySelection = selectionBroker.PrimarySelection;
+                this.originalPrimarySelection = originalPrimarySelection;
+
+                session.ItemCommitted += AfterItemCommitted;
+                session.Dismissed += SessionDismissed;
+
+                selectionBroker.MultiSelectionSessionChanged += GetCurrentSelections;
+            }
+
+            public bool HasSession => session != null;
+            int n_selections => currentSelections.Count;
+
+            void GetCurrentSelections(object sender, EventArgs e)
+            {
+                Debug.Assert(sender == selectionBroker);
+                if (!selectionBroker.HasMultipleSelections)
+                {
+                    // If we dont have multiSelections anymore it is likely the user committed an item and a bug set the selections to one.
+                    return;
+                }
+                currentSelections = selectionBroker.AllSelections;
+                currentPrimarySelection = selectionBroker.PrimarySelection;
+            }
+
+            void AfterItemCommitted(object sender, CompletionItemEventArgs e)
+            {
+                Debug.Assert(sender == session);
+
+                int anchorOffset, activeOffset;
+                PositionAffinity insertionPointAffinity;
+                {
+                    var afterCommitSelection = selectionBroker.PrimarySelection;
+
+                    anchorOffset = afterCommitSelection.InsertionPoint.Position.Position
+                        - afterCommitSelection.AnchorPoint.Position.Position;
+
+                    activeOffset = afterCommitSelection.InsertionPoint.Position.Position
+                        - afterCommitSelection.ActivePoint.Position.Position;
+
+                    insertionPointAffinity = afterCommitSelection.InsertionPointAffinity;
+                }
+
+                var undoHistory = undoManagerProvider.GetTextBufferUndoManager(textBuffer).TextBufferUndoHistory;
+
+                undoHistory.Undo(1); // Undo insertion of committed item, we will redo it for all selections under same transaction instead.
+
+                var undoTransaction = undoHistory.CreateTransaction(nameof(MultiSelectionCompletionHandler));
+
+                ITextSnapshot commitSnapshot = textBuffer.CurrentSnapshot;
+                ITextSnapshot patchSnapshot;
+
+                using (var edit = textBuffer.CreateEdit())
+                {
+                    for (int j = 0; j < n_selections; j++)
+                    {
+                        var selection = currentSelections[j];
+
+                        var insertPoint = selection.InsertionPoint.TranslateTo(commitSnapshot).Position;
+                        var replaceSpan = GetWordSpan(insertPoint.Position, commitSnapshot);
+                        edit.Replace(replaceSpan, e.Item.InsertText);
+                    }
+                    patchSnapshot = edit.Apply();
+                }
+
+                var newSelections = currentSelections.Select(MakeNewSelection);
+                var newPrimarySelection = MakeNewSelection(originalPrimarySelection);
+
+                selectionBroker.SetSelectionRange(newSelections, newPrimarySelection);
+
+                undoTransaction.Complete();
+
+                Selection MakeNewSelection(Selection selection)
+                {
+                    var insertPoint = selection.InsertionPoint.TranslateTo(patchSnapshot).Position;
+                    var anchorPoint = new SnapshotPoint(patchSnapshot, insertPoint.Position - anchorOffset);
+                    var activePoint = new SnapshotPoint(patchSnapshot, insertPoint.Position - activeOffset);
+
+                    return new Selection(insertPoint, anchorPoint, activePoint, insertionPointAffinity);
+                }
+            }
+
+            void SessionDismissed(object sender, EventArgs e)
+            {
+                Debug.Assert(sender == session);
+
+                session = null;
+                selectionBroker.MultiSelectionSessionChanged -= GetCurrentSelections;
+                selectionBroker.TrySetAsPrimarySelection(TranslateTo(originalPrimarySelection, selectionBroker.CurrentSnapshot,
+                    PointTrackingMode.Positive, PointTrackingMode.Negative, PointTrackingMode.Positive));
+            }
+        }
+
+        private static Span GetWordSpan(int position, ITextSnapshot snapshot)
+        {
+            int start = position;
+            int length = 0;
+            while (start > 0 && char.IsLetterOrDigit(snapshot[start - 1]))
+            {
+                start--;
+                length++;
+            }
+            if (length > 0)
+            {
+                while (start + length < snapshot.Length && char.IsLetterOrDigit(snapshot[start + length]))
+                {
+                    length++;
+                }
+            }
+            return new Span(start, length);
+        }
+
+        public static Selection TranslateTo(Selection selection, ITextSnapshot targetSnapshot, PointTrackingMode insertionPointTracking, PointTrackingMode anchorPointTracking, PointTrackingMode activePointTracking)
+        {
+            return new Selection
+            (
+                selection.InsertionPoint.TranslateTo(targetSnapshot, insertionPointTracking),
+                selection.AnchorPoint.TranslateTo(targetSnapshot, anchorPointTracking),
+                selection.ActivePoint.TranslateTo(targetSnapshot, activePointTracking),
+                selection.InsertionPointAffinity
+            );
         }
     }
 }
