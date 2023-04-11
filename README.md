@@ -1,8 +1,9 @@
 # VSIntelliSenseTweaks
 Features:
   - Enhanced filtering algorithm improves matching between your typed text and available items.
-    - Experience less 'no suggestions'.
+    - Items are scored based on how well they matched the typed text.
     - Not as strict as default algorithm, as long as all typed characters appears somewhere in correct order in the word it will match.
+    - Experience less 'no suggestions'.
 
     Default filtering | VSIntelliSenseTweaks filtering
     -|-
