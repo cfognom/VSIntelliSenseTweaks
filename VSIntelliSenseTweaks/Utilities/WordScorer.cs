@@ -82,7 +82,7 @@ namespace VSIntelliSenseTweaks.Utilities
             {
                 bool isSubwordBeginning = i == 0
                   || ((!charKinds[i - 1].IsUpper || word[i - 1] == 'I') && charKinds[i].IsUpper)
-                  || (charKinds[i - 1].IsLetter != charKinds[i].IsLetter)
+                  || (!charKinds[i - 1].IsLetter && charKinds[i].IsLetter)
                   || (i + 1 < n_chars && charKinds[i].IsUpper && !charKinds[i + 1].IsUpper);
 
                 // TODO: Set each bit to ensure initialized.
