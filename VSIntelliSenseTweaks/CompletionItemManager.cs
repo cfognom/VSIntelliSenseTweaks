@@ -36,6 +36,7 @@ using VSCompletionItem = Microsoft.VisualStudio.Language.Intellisense.AsyncCompl
 
 namespace VSIntelliSenseTweaks
 {
+    // TODO: How to make a setting that stops the MEF export of this?
     [Export(typeof(IAsyncCompletionItemManagerProvider))]
     [Name(nameof(VSIntelliSenseTweaksCompletionItemManagerProvider))]
     [ContentType("CSharp")]
@@ -47,7 +48,9 @@ namespace VSIntelliSenseTweaks
     {
         public IAsyncCompletionItemManager GetOrCreate(ITextView textView)
         {
-            return new CompletionItemManager();
+            VSIntelliSenseTweaksPackage.EnsurePackageLoaded();
+            var settings = VSIntelliSenseTweaksPackage.Settings;
+            return new CompletionItemManager(settings);
         }
     }
 
@@ -70,6 +73,13 @@ namespace VSIntelliSenseTweaks
 
         CompletionFilterManager filterManager;
         bool hasFilterManager;
+
+        bool includeDebugSuffix;
+
+        public CompletionItemManager(GeneralSettings settings)
+        {
+            this.includeDebugSuffix = settings.IncludeDebugSuffix;
+        }
 
         public Task<ImmutableArray<VSCompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
         {
@@ -186,8 +196,6 @@ namespace VSIntelliSenseTweaks
                     int patternLength = Math.Min(textFilter.Length, textFilterMaxLength);
                     var pattern = textFilter.AsSpan(0, patternLength);
                     
-                    bool includeDebugSuffix = VSIntelliSenseTweaksPackage.Instance?.IncludeDebugSuffix ?? false;
-                    
                     BitField64 availableFilters = default;
                     for (int i = 0; i < n_completions; i++)
                     {
@@ -239,7 +247,7 @@ namespace VSIntelliSenseTweaks
                             matchedSpans = matchedSpans,
                         };
 
-                        if (includeDebugSuffix)
+                        if (this.includeDebugSuffix)
                         {
                             AddDebugSuffix(ref completion, in key);
                         }

@@ -7,15 +7,15 @@ namespace VSIntelliSenseTweaks
     {
         public const string PageName = "General";
 
-        private bool enableDebugSuffix = false;
+        private bool includeDebugSuffix = false;
 
         [Category(nameof(VSIntelliSenseTweaks))]
-        [DisplayName(nameof(EnableDebugSuffix))]
+        [DisplayName(nameof(IncludeDebugSuffix))]
         [Description("Adds a suffix with debug information to the entries in the completion list.")]
-        public bool EnableDebugSuffix
+        public bool IncludeDebugSuffix
         {
-            get { return enableDebugSuffix; }
-            set { enableDebugSuffix = value; }
+            get { return includeDebugSuffix; }
+            set { includeDebugSuffix = value; }
         }
     }
 }

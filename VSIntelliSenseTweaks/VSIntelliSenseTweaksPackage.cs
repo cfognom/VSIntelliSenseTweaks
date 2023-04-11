@@ -2,7 +2,10 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Microsoft.VisualStudio.Shell.Interop;
+using System.Diagnostics;
 using Task = System.Threading.Tasks.Task;
+using Microsoft;
 
 namespace VSIntelliSenseTweaks
 {
@@ -44,20 +47,33 @@ namespace VSIntelliSenseTweaks
         /// <returns>A task representing the async work of package initialization, or an already completed task if there is none. Do not return null from this method.</returns>
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
+            Instance = this;
             // When initialized asynchronously, the current thread may be a background thread at this point.
             // Do any initialization that requires the UI thread after switching to the UI thread.
             await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-            Instance = this;
         }
 
         public static VSIntelliSenseTweaksPackage Instance;
 
-        public bool IncludeDebugSuffix
+        public static GeneralSettings Settings
         {
             get
             {
-                var page = (GeneralSettings)GetDialogPage(typeof(GeneralSettings));
-                return page.EnableDebugSuffix;
+                Debug.Assert(Instance != null);
+                return (GeneralSettings)Instance.GetDialogPage(typeof(GeneralSettings));
+            }
+        }
+
+        public static void EnsurePackageLoaded()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (Instance == null)
+            {
+                var vsShell = (IVsShell)ServiceProvider.GlobalProvider.GetService(typeof(IVsShell));
+                Assumes.Present(vsShell);
+                var guid = new Guid(VSIntelliSenseTweaksPackage.PackageGuidString);
+                vsShell.LoadPackage(ref guid, out var package);
+                Debug.Assert(Instance != null);
             }
         }
 
