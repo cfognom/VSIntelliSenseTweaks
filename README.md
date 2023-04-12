@@ -1,6 +1,4 @@
-![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/VSIntelliSenseTweaks/logo.png)
-
-# VSIntelliSenseTweaks
+# <img src="https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/VSIntelliSenseTweaks/logo.png" width="60" height="60" align="center"> VSIntelliSenseTweaks
 
 Features:
   - Modified filtering algorithm that improves matching between your typed text and available items.
