@@ -11,6 +11,8 @@
     ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/default_verygoodnameindeed.png) | ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/tweaked_verygoodnameindeed.png)
     ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/default_veryGoodNameIndeed1.png) | ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/tweaked_veryGoodNameIndeed1.png)
     
+    - Supported content types: "CSharp", "CSS", "XAML", "XML"
+    
   - Multi caret/selection intelliSense support.
     - Place two or more carets and trigger word completion (currently hard coded to ctrl + space) and use intelliSense like you are used to in other editors such as VS code.
     
