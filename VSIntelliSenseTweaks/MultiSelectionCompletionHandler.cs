@@ -262,19 +262,24 @@ namespace VSIntelliSenseTweaks
         {
             int start = position;
             int length = 0;
-            while (start > 0 && char.IsLetterOrDigit(snapshot[start - 1]))
+            while (start > 0 && IsWordChar(snapshot[start - 1]))
             {
                 start--;
                 length++;
             }
             if (length > 0)
             {
-                while (start + length < snapshot.Length && char.IsLetterOrDigit(snapshot[start + length]))
+                while (start + length < snapshot.Length && IsWordChar(snapshot[start + length]))
                 {
                     length++;
                 }
             }
             return new Span(start, length);
+
+            bool IsWordChar(char c)
+            {
+                return char.IsLetterOrDigit(c) || c == '_';
+            }
         }
 
         public static Selection TranslateTo(Selection selection, ITextSnapshot targetSnapshot, PointTrackingMode insertionPointTracking, PointTrackingMode anchorPointTracking, PointTrackingMode activePointTracking)
