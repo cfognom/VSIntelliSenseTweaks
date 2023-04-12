@@ -4,7 +4,9 @@
         <Identity Id="VSIntelliSenseTweaks.91be3b0f-9921-411a-a154-a6e067dda3fc" Version="1.4.7" Language="en-US" Publisher="Carl Foghammar Nömtak" />
         <DisplayName>VSIntelliSenseTweaks</DisplayName>
         <Description xml:space="preserve">Tweaks IntelliSense to improve productivity.</Description>
+        <MoreInfo>https://github.com/cfognom/VSIntelliSenseTweaks</MoreInfo>
         <License>LICENSE.txt</License>
+        <Icon>logo.png</Icon>
         <Preview>true</Preview>
     </Metadata>
     <Installation>
