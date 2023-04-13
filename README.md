@@ -18,3 +18,8 @@
     
     ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/multiCaretIntelliSense.gif) | ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/multiCaretIntelliSense1.gif)
     -|-
+
+## Donations
+  If you like the extension and would like to motivate me to work on it more, feel free to donate.
+  
+  [![](https://www.paypalobjects.com/en_US/SE/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=W2PWF4UWEN85J)
