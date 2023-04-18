@@ -1,4 +1,4 @@
-# <img src="https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/VSIntelliSenseTweaks/logo.png" width="60" height="60" align="center"> VSIntelliSenseTweaks
+# <img src="https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/VSIntelliSenseTweaks/logo.png" width="60" height="60" align="center"> IntelliSense Tweaks
 
 ### Features
   - Modified filtering algorithm that improves matching between your typed text and available items.
@@ -6,7 +6,7 @@
     - Not as strict as default algorithm, as long as all typed characters appears somewhere in correct order in the word it will match.
     - Experience less 'no suggestions'.
 
-    Default filtering | VSIntelliSenseTweaks filtering
+    Default filtering | IntelliSense Tweaks filtering
     -|-
     ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/default_verygoodnameindeed.png) | ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/tweaked_verygoodnameindeed.png)
     ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/default_veryGoodNameIndeed1.png) | ![](https://github.com/cfognom/VSIntelliSenseTweaks/blob/master/Media/tweaked_veryGoodNameIndeed1.png)
