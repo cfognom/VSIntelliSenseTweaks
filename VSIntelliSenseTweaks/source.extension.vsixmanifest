@@ -1,12 +1,13 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="VSIntelliSenseTweaks.91be3b0f-9921-411a-a154-a6e067dda3fc" Version="1.4.15" Language="en-US" Publisher="Carl Foghammar Nömtak" />
+        <Identity Id="VSIntelliSenseTweaks.91be3b0f-9921-411a-a154-a6e067dda3fc" Version="1.4.16" Language="en-US" Publisher="Carl Foghammar Nömtak" />
         <DisplayName>IntelliSense Tweaks</DisplayName>
         <Description xml:space="preserve">Improves completion filtering and adds multi selection intelliSense.</Description>
         <MoreInfo>https://github.com/cfognom/VSIntelliSenseTweaks</MoreInfo>
         <License>LICENSE.txt</License>
         <Icon>logo.png</Icon>
+        <Tags>IntelliSense, Tweak, Tweaks, Completion, Suggestion, Filtering, Sorting, Multi caret, Multi selection, Productivity</Tags>
         <Preview>true</Preview>
     </Metadata>
     <Installation>
