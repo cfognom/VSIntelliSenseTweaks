@@ -7,7 +7,7 @@
         <MoreInfo>https://github.com/cfognom/VSIntelliSenseTweaks</MoreInfo>
         <License>LICENSE.txt</License>
         <Icon>logo.png</Icon>
-        <Tags>IntelliSense, Tweak, Tweaks, Completion, Suggestion, Filtering, Sorting, Multi caret, Multi selection, Productivity</Tags>
+        <Tags>IntelliSense, Tweak, Tweaks, Completion, Completions, Suggestion, Suggestions, Filter, Filtering, Sorting, Multi caret, Multi selection, Productivity</Tags>
         <Preview>true</Preview>
     </Metadata>
     <Installation>
