@@ -386,8 +386,8 @@ namespace VSIntelliSenseTweaks.Utilities
             builder.Count = n_spans;
             int score = 0;
             int n_subwordHits = 0;
-            int upperMatchedAsLowerCount = 0;
-            int lowerMatchedAsUpperCount = 0;
+            int n_upperMatchedAsLower = 0;
+            int n_lowerMatchedAsUpper = 0;
             for (int i = 0; i < n_spans; i++)
             {
                 var span = data.spans[i];
@@ -398,11 +398,11 @@ namespace VSIntelliSenseTweaks.Utilities
                     int comp = data.word[span.Start + j] - data.pattern[span.StartInPattern + j];
                     if (comp < 0)
                     {
-                        lowerMatchedAsUpperCount++;
+                        n_lowerMatchedAsUpper++;
                     }
                     else if (comp > 0)
                     {
-                        upperMatchedAsLowerCount++;
+                        n_upperMatchedAsLower++;
                     }
                 }
                 score += ScoreSpan(span); 
@@ -414,8 +414,8 @@ namespace VSIntelliSenseTweaks.Utilities
             score -= n_unmatchedChars;
             score -= 32 * n_unmatchedSubwords;
             score -= 16 * n_spans;
-            score -= 32 * upperMatchedAsLowerCount;
-            score -= 8 * lowerMatchedAsUpperCount;
+            score -= 32 * n_upperMatchedAsLower;
+            score -= 8 * n_lowerMatchedAsUpper;
 
             if (n_unmatchedChars == 0)
             {
