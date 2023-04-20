@@ -411,8 +411,8 @@ namespace VSIntelliSenseTweaks.Utilities
             int n_unmatchedChars = data.word.Length - data.pattern.Length;
             int n_unmatchedSubwords = data.n_subwords - n_subwordHits;
 
-            score -= n_unmatchedChars;
-            score -= 32 * n_unmatchedSubwords;
+            score -= 4 * n_unmatchedChars;
+            score -= 64 * n_unmatchedSubwords;
             score -= 16 * n_spans;
             score -= 32 * n_upperMatchedAsLower;
             score -= 8 * n_lowerMatchedAsUpper;
