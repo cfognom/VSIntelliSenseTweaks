@@ -405,7 +405,7 @@ namespace VSIntelliSenseTweaks.Utilities
                         upperMatchedAsLowerCount++;
                     }
                 }
-                score += ScoreSpan(span, upperMatchedAsLowerCount); 
+                score += ScoreSpan(span); 
             }
 
             int n_unmatchedChars = data.word.Length - data.pattern.Length;
@@ -427,7 +427,7 @@ namespace VSIntelliSenseTweaks.Utilities
             return score;
         }
 
-        static int ScoreSpan(MatchedSpan span, int exactCount)
+        static int ScoreSpan(MatchedSpan span)
         {
             int effectiveLength = span.Length;
             int score = 32 * effectiveLength;
