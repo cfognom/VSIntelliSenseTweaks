@@ -236,7 +236,7 @@ namespace VSIntelliSenseTweaks
                         }
 
                         int roslynScore = GetRoslynScore(completion);
-                        patternScore += roslynScore * pattern.Length / 64;
+                        patternScore += Math.Min(roslynScore, 16384) * pattern.Length / 64;
 
                         var key = new CompletionItemKey
                         {
