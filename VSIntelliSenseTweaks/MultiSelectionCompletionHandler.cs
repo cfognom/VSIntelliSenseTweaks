@@ -88,8 +88,7 @@ namespace VSIntelliSenseTweaks
             int n_selections = selections.Count;
             var textVersion = textBuffer.CurrentSnapshot.Version;
 
-            var cancellationToken = new CancellationToken();
-            var trigger = new CompletionTrigger(CompletionTriggerReason.InvokeAndCommitIfUnique, textView.TextSnapshot);
+            var trigger = new CompletionTrigger(CompletionTriggerReason.InvokeAndCommitIfUnique, textBuffer.CurrentSnapshot);
 
             for (int i = 0; i < n_selections; i++)
             {
@@ -100,25 +99,36 @@ namespace VSIntelliSenseTweaks
                 // patch up all other selections once an item was committed.
                 selectionBroker.SetSelection(selection);
                 var triggerPoint = selection.InsertionPoint.Position;
-                var potentialSession = completionBroker.TriggerCompletion(textView, trigger, triggerPoint, cancellationToken);
+                var potentialSession = completionBroker.TriggerCompletion(textView, trigger, triggerPoint, CancellationToken.None);
 
                 if (potentialSession == null)
                     continue;
 
-                potentialSession.OpenOrUpdate(trigger, triggerPoint, cancellationToken);
+                potentialSession.OpenOrUpdate(trigger, triggerPoint, CancellationToken.None);
 
-                _ = potentialSession.GetComputedItems(cancellationToken); // This call dismisses the session if it is started in a bad location (in a string for example).
+                var completionItems = potentialSession.GetComputedItems(CancellationToken.None); // This call dismisses the session if it is started in a bad location (in a string for example).
 
                 if (textBuffer.CurrentSnapshot.Version != textVersion)
                 {
                     // For some reason the text version changed due to starting a session.
+                    // We have to get the updated selections.
                     selections = selectionBroker.AllSelections;
                     selection = selections[i];
-                    Debug.WriteLine("Saved you.");
                 }
 
                 if (potentialSession.IsDismissed)
                     continue;
+
+                int n_completionItems = completionItems.Items.Count();
+
+                Debug.Assert(n_completionItems > 0);
+
+                if (n_completionItems == 1
+                && completionItems.Items.First().InsertText == potentialSession.ApplicableToSpan.GetText(textBuffer.CurrentSnapshot))
+                {
+                    potentialSession.Dismiss();
+                    continue;
+                }
 
                 // We have a good session.
 
@@ -194,19 +204,7 @@ namespace VSIntelliSenseTweaks
             {
                 Debug.Assert(sender == session);
 
-                int anchorOffset, activeOffset;
-                PositionAffinity insertionPointAffinity;
-                {
-                    var afterCommitSelection = selectionBroker.PrimarySelection;
-
-                    anchorOffset = afterCommitSelection.InsertionPoint.Position.Position
-                        - afterCommitSelection.AnchorPoint.Position.Position;
-
-                    activeOffset = afterCommitSelection.InsertionPoint.Position.Position
-                        - afterCommitSelection.ActivePoint.Position.Position;
-
-                    insertionPointAffinity = afterCommitSelection.InsertionPointAffinity;
-                }
+                var selectionCharacteristics = new SelectionCharacteristics(selectionBroker.PrimarySelection);
 
                 var undoHistory = undoManagerProvider.GetTextBufferUndoManager(textBuffer).TextBufferUndoHistory;
 
@@ -214,8 +212,8 @@ namespace VSIntelliSenseTweaks
 
                 var undoTransaction = undoHistory.CreateTransaction(nameof(MultiSelectionCompletionHandler));
 
-                ITextSnapshot commitSnapshot = textBuffer.CurrentSnapshot;
-                ITextSnapshot patchSnapshot;
+                ITextSnapshot beforeEditSnapshot = textBuffer.CurrentSnapshot;
+                ITextSnapshot afterEditSnapshot;
 
                 using (var edit = textBuffer.CreateEdit())
                 {
@@ -223,11 +221,11 @@ namespace VSIntelliSenseTweaks
                     {
                         var selection = currentSelections[j];
 
-                        var insertPoint = selection.InsertionPoint.TranslateTo(commitSnapshot).Position;
-                        var replaceSpan = GetWordSpan(insertPoint.Position, commitSnapshot);
+                        var insertPoint = selection.InsertionPoint.TranslateTo(beforeEditSnapshot).Position;
+                        var replaceSpan = GetWordSpan(insertPoint.Position, beforeEditSnapshot);
                         edit.Replace(replaceSpan, e.Item.InsertText);
                     }
-                    patchSnapshot = edit.Apply();
+                    afterEditSnapshot = edit.Apply();
                 }
 
                 var newSelections = currentSelections.Select(MakeNewSelection);
@@ -239,11 +237,8 @@ namespace VSIntelliSenseTweaks
 
                 Selection MakeNewSelection(Selection selection)
                 {
-                    var insertPoint = selection.InsertionPoint.TranslateTo(patchSnapshot).Position;
-                    var anchorPoint = new SnapshotPoint(patchSnapshot, insertPoint.Position - anchorOffset);
-                    var activePoint = new SnapshotPoint(patchSnapshot, insertPoint.Position - activeOffset);
-
-                    return new Selection(insertPoint, anchorPoint, activePoint, insertionPointAffinity);
+                    var insertPoint = selection.InsertionPoint.TranslateTo(afterEditSnapshot).Position;
+                    return selectionCharacteristics.CreateSelection(insertPoint);
                 }
             }
 
@@ -291,6 +286,33 @@ namespace VSIntelliSenseTweaks
                 selection.ActivePoint.TranslateTo(targetSnapshot, activePointTracking),
                 selection.InsertionPointAffinity
             );
+        }
+
+        struct SelectionCharacteristics
+        {
+            int anchorOffset;
+            int activeOffset;
+            PositionAffinity insertionPointAffinity;
+
+            public SelectionCharacteristics(Selection selection)
+            {
+                anchorOffset = selection.InsertionPoint.Position.Position
+                    - selection.AnchorPoint.Position.Position;
+
+                activeOffset = selection.InsertionPoint.Position.Position
+                    - selection.ActivePoint.Position.Position;
+
+                insertionPointAffinity = selection.InsertionPointAffinity;
+            }
+
+            public Selection CreateSelection(SnapshotPoint insertionPoint)
+            {
+                var snapshot = insertionPoint.Snapshot;
+                var anchorPoint = new SnapshotPoint(snapshot, insertionPoint.Position - anchorOffset);
+                var activePoint = new SnapshotPoint(snapshot, insertionPoint.Position - activeOffset);
+
+                return new Selection(insertionPoint, anchorPoint, activePoint, insertionPointAffinity);
+            }
         }
     }
 }
