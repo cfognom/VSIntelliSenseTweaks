@@ -415,7 +415,7 @@ namespace VSIntelliSenseTweaks.Utilities
             score -= 64 * n_unmatchedSubwords;
             score -= 16 * n_spans;
             score -= 32 * n_upperMatchedAsLower;
-            score -= 8 * n_lowerMatchedAsUpper;
+            score -= 16 * n_lowerMatchedAsUpper;
 
             if (n_unmatchedChars == 0)
             {
