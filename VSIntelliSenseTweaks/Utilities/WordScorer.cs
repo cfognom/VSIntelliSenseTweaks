@@ -417,8 +417,9 @@ namespace VSIntelliSenseTweaks.Utilities
             score -= 32 * n_upperMatchedAsLower;
             score -= 16 * n_lowerMatchedAsUpper;
 
-            if (n_unmatchedChars == 0)
+            if (n_unmatchedChars == 0 && n_upperMatchedAsLower == 0 && n_lowerMatchedAsUpper == 0)
             {
+                // Perfect match gets a bonus.
                 score *= 2;
             }
 
