@@ -208,7 +208,8 @@ namespace VSIntelliSenseTweaks
                         if (hasTextFilter)
                         {
                             var word = completion.FilterText.AsSpan();
-                            patternScore = scorer.ScoreWord(word, pattern, out matchedSpans);
+                            int displayTextOffset = Math.Max(0, completion.DisplayText.AsSpan().IndexOf(word));
+                            patternScore = scorer.ScoreWord(word, pattern, displayTextOffset, out matchedSpans);
                             if (patternScore == int.MinValue) continue;
                         }
                         else

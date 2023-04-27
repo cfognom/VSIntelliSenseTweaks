@@ -31,7 +31,7 @@ namespace VSIntelliSenseTweaks.Utilities
             this.matchedSpans = new UnmanagedStack<MatchedSpan>(stackInitialCapacity);
         }
 
-        public int ScoreWord(ReadOnlySpan<char> word, ReadOnlySpan<char> pattern, out ImmutableArray<Span> matchedSpans)
+        public int ScoreWord(ReadOnlySpan<char> word, ReadOnlySpan<char> pattern, int displayTextOffset, out ImmutableArray<Span> matchedSpans)
         {
             int wordLength = word.Length;
             int patternLength = pattern.Length;
@@ -77,7 +77,7 @@ namespace VSIntelliSenseTweaks.Utilities
 
             //Span<Span> subwordSpans = n_subwords <= 128 ? stackalloc Span[n_subwords] : new Span[n_subwords];
             //PopulateSubwords(wordLength, isSubwordStart, subwordSpans);
-            int score = CompileSpans(ref data, out matchedSpans);
+            int score = CompileSpans(ref data, displayTextOffset, out matchedSpans);
             return score;
         }
 
@@ -379,7 +379,7 @@ namespace VSIntelliSenseTweaks.Utilities
             }
         }
 
-        static int CompileSpans(ref PatternMatchingData data, out ImmutableArray<Span> matchedSpans)
+        static int CompileSpans(ref PatternMatchingData data, int displayTextOffset, out ImmutableArray<Span> matchedSpans)
         {
             int n_spans = data.n_spans;
             var builder = ImmutableArray.CreateBuilder<Span>(n_spans);
@@ -391,7 +391,7 @@ namespace VSIntelliSenseTweaks.Utilities
             for (int i = 0; i < n_spans; i++)
             {
                 var span = data.spans[i];
-                builder[i] = span.ToSpan();
+                builder[i] = new Span(span.Start + displayTextOffset, span.Length);
                 if (span.IsSubwordStart) n_subwordHits++;
                 for (int j = 0; j < span.Length; j++)
                 {
