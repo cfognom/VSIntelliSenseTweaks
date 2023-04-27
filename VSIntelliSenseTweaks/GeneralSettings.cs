@@ -8,6 +8,7 @@ namespace VSIntelliSenseTweaks
         public const string PageName = "General";
 
         private bool includeDebugSuffix = false;
+        private bool disableSoftSelection = false;
 
         [Category(nameof(VSIntelliSenseTweaks))]
         [DisplayName(nameof(IncludeDebugSuffix))]
@@ -16,6 +17,15 @@ namespace VSIntelliSenseTweaks
         {
             get { return includeDebugSuffix; }
             set { includeDebugSuffix = value; }
+        }
+
+        [Category(nameof(VSIntelliSenseTweaks))]
+        [DisplayName(nameof(DisableSoftSelection))]
+        [Description("Disables soft-selection in the completion list.")]
+        public bool DisableSoftSelection
+        {
+            get { return disableSoftSelection; }
+            set { disableSoftSelection = value; }
         }
     }
 }
