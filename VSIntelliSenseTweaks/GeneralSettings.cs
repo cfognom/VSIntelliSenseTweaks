@@ -8,7 +8,7 @@ namespace VSIntelliSenseTweaks
         public const string PageName = "General";
 
         private bool includeDebugSuffix = false;
-        private bool disableSoftSelectionOnManualTrigger = false;
+        private bool disableSoftSelection = false;
 
         [Category(VSIntelliSenseTweaksPackage.PackageDisplayName)]
         [DisplayName(nameof(IncludeDebugSuffix))]
@@ -20,12 +20,12 @@ namespace VSIntelliSenseTweaks
         }
 
         [Category(VSIntelliSenseTweaksPackage.PackageDisplayName)]
-        [DisplayName(nameof(DisableSoftSelectionOnManualTrigger))]
-        [Description("Disables soft-selection in the completion list when completion was triggered manually (usually by ctrl + space).")]
-        public bool DisableSoftSelectionOnManualTrigger
+        [DisplayName(nameof(DisableSoftSelection))]
+        [Description("Disables initial soft-selection in the completion-list when completion was triggered manually (usually by ctrl + space).")]
+        public bool DisableSoftSelection
         {
-            get { return disableSoftSelectionOnManualTrigger; }
-            set { disableSoftSelectionOnManualTrigger = value; }
+            get { return disableSoftSelection; }
+            set { disableSoftSelection = value; }
         }
     }
 }
