@@ -162,6 +162,8 @@ namespace VSIntelliSenseTweaks
             Selection currentPrimarySelection;
             Selection originalPrimarySelection;
 
+            bool lastEditChangedTextBuffer;
+
             public void Initialize(
                 ITextBuffer textBuffer,
                 ITextBufferUndoManagerProvider undoManagerProvider,
@@ -178,9 +180,11 @@ namespace VSIntelliSenseTweaks
                 this.currentSelections = selectionBroker.AllSelections;
                 this.currentPrimarySelection = selectionBroker.PrimarySelection;
                 this.originalPrimarySelection = originalPrimarySelection;
+                this.lastEditChangedTextBuffer = false;
 
                 session.ItemCommitted += AfterItemCommitted;
                 session.Dismissed += SessionDismissed;
+                textBuffer.Changed += AfterTextBufferChanged;
 
                 selectionBroker.MultiSelectionSessionChanged += GetCurrentSelections;
             }
@@ -200,6 +204,12 @@ namespace VSIntelliSenseTweaks
                 currentPrimarySelection = selectionBroker.PrimarySelection;
             }
 
+            private void AfterTextBufferChanged(object sender, TextContentChangedEventArgs e)
+            {
+                Debug.Assert(sender == textBuffer);
+                this.lastEditChangedTextBuffer = e.BeforeVersion.ReiteratedVersionNumber != e.AfterVersion.ReiteratedVersionNumber;
+            }
+
             void AfterItemCommitted(object sender, CompletionItemEventArgs e)
             {
                 Debug.Assert(sender == session);
@@ -208,7 +218,11 @@ namespace VSIntelliSenseTweaks
 
                 var undoHistory = undoManagerProvider.GetTextBufferUndoManager(textBuffer).TextBufferUndoHistory;
 
-                undoHistory.Undo(1); // Undo insertion of committed item, we will redo it for all selections under same transaction instead.
+                if (lastEditChangedTextBuffer) // Last edit should be the commit action.
+                {
+                    // If text buffer was changed due to committing an item we need to revert that change.
+                    undoHistory.Undo(1); // Undo insertion of committed item, we will redo it for all selections under same transaction instead.
+                }
 
                 var undoTransaction = undoHistory.CreateTransaction(nameof(MultiSelectionCompletionHandler));
 
@@ -247,6 +261,7 @@ namespace VSIntelliSenseTweaks
                 Debug.Assert(sender == session);
 
                 session = null;
+                textBuffer.Changed -= AfterTextBufferChanged;
                 selectionBroker.MultiSelectionSessionChanged -= GetCurrentSelections;
                 selectionBroker.TrySetAsPrimarySelection(TranslateTo(originalPrimarySelection, selectionBroker.CurrentSnapshot,
                     PointTrackingMode.Positive, PointTrackingMode.Negative, PointTrackingMode.Positive));
