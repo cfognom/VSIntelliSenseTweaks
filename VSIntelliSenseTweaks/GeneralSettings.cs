@@ -8,9 +8,9 @@ namespace VSIntelliSenseTweaks
         public const string PageName = "General";
 
         private bool includeDebugSuffix = false;
-        private bool disableSoftSelection = false;
+        private bool disableSoftSelectionOnManualTrigger = false;
 
-        [Category(nameof(VSIntelliSenseTweaks))]
+        [Category(VSIntelliSenseTweaksPackage.PackageDisplayName)]
         [DisplayName(nameof(IncludeDebugSuffix))]
         [Description("Adds a suffix with debug information to the entries in the completion list.")]
         public bool IncludeDebugSuffix
@@ -19,13 +19,13 @@ namespace VSIntelliSenseTweaks
             set { includeDebugSuffix = value; }
         }
 
-        [Category(nameof(VSIntelliSenseTweaks))]
-        [DisplayName(nameof(DisableSoftSelection))]
-        [Description("Disables soft-selection in the completion list.")]
-        public bool DisableSoftSelection
+        [Category(VSIntelliSenseTweaksPackage.PackageDisplayName)]
+        [DisplayName(nameof(DisableSoftSelectionOnManualTrigger))]
+        [Description("Disables soft-selection in the completion list when completion was triggered manually (usually by ctrl + space).")]
+        public bool DisableSoftSelectionOnManualTrigger
         {
-            get { return disableSoftSelection; }
-            set { disableSoftSelection = value; }
+            get { return disableSoftSelectionOnManualTrigger; }
+            set { disableSoftSelectionOnManualTrigger = value; }
         }
     }
 }

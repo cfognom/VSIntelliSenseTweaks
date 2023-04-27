@@ -75,12 +75,12 @@ namespace VSIntelliSenseTweaks
         bool hasFilterManager;
 
         bool includeDebugSuffix;
-        bool disableSoftSelection;
+        bool disableSoftSelectionOnManualTrigger;
 
         public CompletionItemManager(GeneralSettings settings)
         {
             this.includeDebugSuffix = settings.IncludeDebugSuffix;
-            this.disableSoftSelection = settings.DisableSoftSelection;
+            this.disableSoftSelectionOnManualTrigger = settings.DisableSoftSelectionOnManualTrigger;
         }
 
         public Task<ImmutableArray<VSCompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
@@ -272,7 +272,8 @@ namespace VSIntelliSenseTweaks
             if (n_eligibleCompletions == 0)
                 return UpdateSelectionHint.NoChange;
 
-            if (disableSoftSelection) // User setting to disable soft-selection.
+            if (disableSoftSelectionOnManualTrigger // User setting to disable soft-selection.
+            && currentData.InitialTrigger.Reason == CompletionTriggerReason.InvokeAndCommitIfUnique)
                 return UpdateSelectionHint.Selected;
 
             if (hasTextFilter && !currentData.DisplaySuggestionItem)
