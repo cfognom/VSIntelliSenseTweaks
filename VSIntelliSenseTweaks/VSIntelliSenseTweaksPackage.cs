@@ -28,13 +28,15 @@ namespace VSIntelliSenseTweaks
     /// </remarks>
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     [Guid(VSIntelliSenseTweaksPackage.PackageGuidString)]
-    [ProvideOptionPage(pageType: typeof(GeneralSettings), categoryName: nameof(VSIntelliSenseTweaks), pageName: GeneralSettings.PageName, 0, 0, true)]
+    [ProvideOptionPage(pageType: typeof(GeneralSettings), categoryName: PackageDisplayName, pageName: GeneralSettings.PageName, 0, 0, true)]
     public sealed class VSIntelliSenseTweaksPackage : AsyncPackage
     {
         /// <summary>
         /// VSIntelliSenseTweaksPackage GUID string.
         /// </summary>
         public const string PackageGuidString = "8e0ec3d8-0561-477a-ade4-77d8826fc290";
+
+        public const string PackageDisplayName = "IntelliSense Tweaks";
 
         #region Package Members
 
