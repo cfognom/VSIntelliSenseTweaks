@@ -214,7 +214,7 @@ namespace VSIntelliSenseTweaks
                         }
                         else
                         {
-                            patternScore = int.MinValue / 2;
+                            patternScore = int.MinValue;
                             matchedSpans = noSpans;
                         }
 
