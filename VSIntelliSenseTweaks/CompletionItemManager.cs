@@ -36,7 +36,7 @@ using VSCompletionItem = Microsoft.VisualStudio.Language.Intellisense.AsyncCompl
 
 namespace VSIntelliSenseTweaks
 {
-    // TODO: How to make a setting that stops the MEF export of this?
+    // TODO: How to make a user setting that stops the MEF export of this?
     [Export(typeof(IAsyncCompletionItemManagerProvider))]
     [Name(nameof(VSIntelliSenseTweaksCompletionItemManagerProvider))]
     [ContentType("CSharp")]
@@ -214,7 +214,7 @@ namespace VSIntelliSenseTweaks
                         }
                         else
                         {
-                            patternScore = int.MinValue;
+                            patternScore = int.MinValue / 2;
                             matchedSpans = noSpans;
                         }
 
@@ -225,7 +225,7 @@ namespace VSIntelliSenseTweaks
 
                         var whitelistFilters = filterManager.whitelist & filterMask;
                         availableFilters |= whitelistFilters; // Announce available whitelist filters.
-                        if (!filterManager.HasActiveWhitelistFilter(filterMask)) continue;
+                        if (filterManager.HasActiveWhitelist && !filterManager.HasActiveWhitelistFilter(filterMask)) continue;
 
                         int defaultIndex = defaults.IndexOf(completion.FilterText);
                         if (defaultIndex == -1) defaultIndex = int.MaxValue;
@@ -416,6 +416,11 @@ namespace VSIntelliSenseTweaks
             BitField64 activeBlacklist;
             BitField64 activeWhitelist;
 
+            /// <summary>
+            /// True when there is an active whitelist to perform checks against.
+            /// </summary>
+            public bool HasActiveWhitelist => activeWhitelist != default;
+
             enum CompletionFilterKind
             {
                 Null, Blacklist, Whitelist
@@ -430,6 +435,7 @@ namespace VSIntelliSenseTweaks
                 whitelist = default;
                 activeBlacklist = default;
                 activeWhitelist = default;
+                
 
                 for (int i = 0; i < filterStates.Length; i++)
                 {
@@ -473,12 +479,6 @@ namespace VSIntelliSenseTweaks
 
                 activeBlacklist = ~selection & blacklist;
                 activeWhitelist =  selection & whitelist;
-
-                if (activeWhitelist == default)
-                {
-                    // No active whitelist = everything on whitelist.
-                    activeWhitelist = whitelist;
-                }
             }
 
             public BitField64 CreateFilterMask(ImmutableArray<CompletionFilter> completionFilters)
@@ -501,6 +501,7 @@ namespace VSIntelliSenseTweaks
 
             public bool HasActiveWhitelistFilter(BitField64 completionFilters)
             {
+                Debug.Assert(HasActiveWhitelist);
                 bool isOnWhitelist = (activeWhitelist & completionFilters) != default;
                 return isOnWhitelist;
             }
