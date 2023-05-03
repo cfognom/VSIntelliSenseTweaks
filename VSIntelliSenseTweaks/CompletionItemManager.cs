@@ -323,11 +323,11 @@ namespace VSIntelliSenseTweaks
 
             if (roslynScore >= MatchPriority.Preselect)
             {
-                roslynPreselectedItemFilterText = completion.FilterText.AsSpan();
+                roslynPreselectedItemFilterText = completion.DisplayText.AsSpan();
             }
             else if (roslynPreselectedItemFilterText != null)
             {
-                var word = completion.FilterText.AsSpan();
+                var word = completion.DisplayText.AsSpan();
                 int preselectedLength = roslynPreselectedItemFilterText.Length;
 
                 if (word.Length > preselectedLength
