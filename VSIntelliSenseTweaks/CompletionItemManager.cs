@@ -76,11 +76,13 @@ namespace VSIntelliSenseTweaks
 
         bool includeDebugSuffix;
         bool disableSoftSelection;
+        bool boostEnumMemberScore;
 
         public CompletionItemManager(GeneralSettings settings)
         {
             this.includeDebugSuffix = settings.IncludeDebugSuffix;
             this.disableSoftSelection = settings.DisableSoftSelection;
+            this.boostEnumMemberScore = settings.BoostEnumMemberScore;
         }
 
         public Task<ImmutableArray<VSCompletionItem>> SortCompletionListAsync(IAsyncCompletionSession session, AsyncCompletionSessionInitialDataSnapshot data, CancellationToken token)
@@ -197,7 +199,8 @@ namespace VSIntelliSenseTweaks
 
                     int patternLength = Math.Min(textFilter.Length, textFilterMaxLength);
                     var pattern = textFilter.AsSpan(0, patternLength);
-                    
+
+                    ReadOnlySpan<char> roslynPreselectedItemFilterText = null;
                     BitField64 availableFilters = default;
                     for (int i = 0; i < n_completions; i++)
                     {
@@ -227,8 +230,7 @@ namespace VSIntelliSenseTweaks
                         availableFilters |= whitelistFilters; // Announce available whitelist filters.
                         if (filterManager.HasActiveWhitelist && !filterManager.HasActiveWhitelistFilter(filterMask)) continue;
 
-                        int defaultIndex = defaults.IndexOf(completion.FilterText);
-                        if (defaultIndex == -1) defaultIndex = int.MaxValue;
+                        int defaultIndex = defaults.IndexOf(completion.FilterText) & int.MaxValue; // AND operation turns any negative value to int.MaxValue so we can sort properly
 
                         if (blacklistFilters != default)
                         {
@@ -238,11 +240,11 @@ namespace VSIntelliSenseTweaks
                             patternScore -= 64 * pattern.Length;
                         }
 
-                        int roslynScore = GetRoslynScore(completion);
-                        const int roslynScoreClamper = 1 << 22;
-                        int clampedRoslynScore = Math.Max(Math.Min(roslynScore, roslynScoreClamper), -roslynScoreClamper);
-                        int roslynScoreBonus = clampedRoslynScore * pattern.Length / 64;
-                        patternScore += roslynScoreBonus;
+                        int roslynScore = boostEnumMemberScore ?
+                            GetBoostedRoslynScore(completion, ref roslynPreselectedItemFilterText) :
+                            GetRoslynScore(completion);
+
+                        patternScore += CalculateRoslynScoreBonus(roslynScore, pattern.Length);
 
                         var key = new CompletionItemKey
                         {
@@ -305,6 +307,46 @@ namespace VSIntelliSenseTweaks
             return builder.MoveToImmutable();
         }
 
+        private int CalculateRoslynScoreBonus(int roslynScore, int patternLength)
+        {
+            const int roslynScoreClamper = 1 << 22;
+            int clampedRoslynScore = Math.Max(Math.Min(roslynScore, roslynScoreClamper), -roslynScoreClamper);
+            return clampedRoslynScore * patternLength / 64;
+        }
+
+        /// <summary>
+        /// Returns the normal roslyn score but gives additional score to enum members if the enum type was preselected by roslyn.
+        /// </summary>
+        private int GetBoostedRoslynScore(VSCompletionItem completion, ref ReadOnlySpan<char> roslynPreselectedItemFilterText)
+        {
+            int roslynScore = GetRoslynScore(completion);
+
+            if (roslynScore >= MatchPriority.Preselect)
+            {
+                roslynPreselectedItemFilterText = completion.FilterText.AsSpan();
+            }
+            else if (roslynPreselectedItemFilterText != null)
+            {
+                var word = completion.FilterText.AsSpan();
+                int preselectedLength = roslynPreselectedItemFilterText.Length;
+
+                if (word.Length > preselectedLength
+                &&  word.Slice(0, preselectedLength).SequenceEqual(roslynPreselectedItemFilterText))
+                {
+                    if (word[preselectedLength] == '.')
+                    {
+                        roslynScore = MatchPriority.Preselect / 2;
+                    }
+                }
+                else
+                {
+                    roslynPreselectedItemFilterText = null;
+                }
+            }
+
+            return roslynScore;
+        }
+
         private int GetRoslynScore(VSCompletionItem completion)
         {
             if (completion.Properties.TryGetProperty("RoslynCompletionItemData", out object roslynObject))
@@ -317,7 +359,7 @@ namespace VSIntelliSenseTweaks
             return 0;
         }
 
-        // Since we do not have compile time access the class type:
+        // Since we do not have compile time access the class type;
         // "Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncCompletion.CompletionItemData",
         // we have to use reflection or expressions to access it.
         private static Func<object, RoslynCompletionItem> RoslynCompletionItemGetter = null;

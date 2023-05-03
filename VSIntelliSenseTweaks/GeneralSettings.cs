@@ -9,6 +9,7 @@ namespace VSIntelliSenseTweaks
 
         private bool includeDebugSuffix = false;
         private bool disableSoftSelection = false;
+        private bool boostEnumMemberScore = true;
 
         [Category(VSIntelliSenseTweaksPackage.PackageDisplayName)]
         [DisplayName(nameof(IncludeDebugSuffix))]
@@ -26,6 +27,15 @@ namespace VSIntelliSenseTweaks
         {
             get { return disableSoftSelection; }
             set { disableSoftSelection = value; }
+        }
+
+        [Category(VSIntelliSenseTweaksPackage.PackageDisplayName)]
+        [DisplayName(nameof(BoostEnumMemberScore))]
+        [Description("Boosts the score of enum members when the enum type was preselected by roslyn.")]
+        public bool BoostEnumMemberScore
+        {
+            get { return boostEnumMemberScore; }
+            set { boostEnumMemberScore = value; }
         }
     }
 }
