@@ -336,6 +336,7 @@ namespace VSIntelliSenseTweaks.Utilities
         static int CompileSpans(ref PatternMatchingData data, int displayTextOffset, out ImmutableArray<Span> matchedSpans)
         {
             int n_spans = data.n_spans;
+            Debug.Assert(n_spans > 0);
             var builder = ImmutableArray.CreateBuilder<Span>(n_spans);
             builder.Count = n_spans;
             int score = 0;
@@ -363,9 +364,12 @@ namespace VSIntelliSenseTweaks.Utilities
             }
 
             int n_unmatchedChars = data.word.Length - data.pattern.Length;
+            int n_unmatchedTrailingChars = data.word.Length - data.spans[n_spans - 1].End;
+            int n_unmatchedPassedChars = n_unmatchedChars - n_unmatchedTrailingChars;
             int n_unmatchedSubwords = data.n_subwords - n_subwordHits;
 
-            score -= 4 * n_unmatchedChars;
+            score -= 4 * n_unmatchedPassedChars;
+            score -= 1 * n_unmatchedTrailingChars;
             score -= 64 * n_unmatchedSubwords;
             score -= 16 * n_spans;
             score -= 32 * n_upperMatchedAsLower;
