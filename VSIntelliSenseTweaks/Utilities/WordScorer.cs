@@ -75,8 +75,6 @@ namespace VSIntelliSenseTweaks.Utilities
             FindMatchingSpans(ref data);
             CombineMatchedSpans(ref data);
 
-            //Span<Span> subwordSpans = n_subwords <= 128 ? stackalloc Span[n_subwords] : new Span[n_subwords];
-            //PopulateSubwords(wordLength, isSubwordStart, subwordSpans);
             int score = CompileSpans(ref data, displayTextOffset, out matchedSpans);
             return score;
         }
@@ -329,50 +327,6 @@ namespace VSIntelliSenseTweaks.Utilities
                 }
 
                 if (newSpan.IsSubwordStart && newSpan.EndInPattern > existingSpan.EndInPattern)
-                    return true;
-
-                return false;
-
-                int i_end = newSpan.EndInPattern < n_matchedInPattern_ ?
-                    data_.charToSpan[newSpan.EndInPattern - 1] + 1 : data_.n_spans;
-
-                int n_subwordsBefore = 0;
-                int n_nonSubwordCharsBefore = 0;
-                int n_spansBefore = i_end - existingSpanIndex;
-                for (int i = existingSpanIndex; i < i_end; i++)
-                {
-                    var span = data_.spans[i];
-                    int isSubword = span.IsSubwordStart_AsInt;
-                    n_subwordsBefore += span.IsSubwordStart_AsInt;
-                    if (!span.IsSubwordStart) n_nonSubwordCharsBefore += span.Length;
-                }
-
-                int n_subwordsAfter = newSpan.IsSubwordStart_AsInt;
-                int n_nonSubwordCharsAfter = n_subwordsAfter * newSpan.Length;
-                int n_spansAfter = 1;
-                if (newSpan.StartInPattern != existingSpan.StartInPattern)
-                {
-                    n_subwordsAfter += 1;
-                    if (!existingSpan.IsSubwordStart) n_nonSubwordCharsBefore += (newSpan.StartInPattern - existingSpan.StartInPattern);
-                    n_spansAfter += 1;
-                }
-
-                if (n_subwordsAfter > n_subwordsBefore)
-                    return true;
-
-                if (n_subwordsAfter < n_subwordsBefore)
-                    return false;
-
-                if (n_spansAfter < n_spansBefore)
-                    return true;
-
-                if (n_spansAfter > n_spansBefore)
-                    return false;
-
-                if (n_nonSubwordCharsAfter < n_nonSubwordCharsBefore)
-                    return true;
-
-                if (newSpan.EndInPattern > n_matchedInPattern_)
                     return true;
 
                 return false;
