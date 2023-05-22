@@ -278,8 +278,7 @@ namespace VSIntelliSenseTweaks
             if (n_eligibleCompletions == 0)
                 return UpdateSelectionHint.NoChange;
 
-            if (disableSoftSelection // User setting to disable soft-selection.
-            && currentData.InitialTrigger.Reason == CompletionTriggerReason.InvokeAndCommitIfUnique)
+            if (IsSoftSelectionDisabled())
                 return UpdateSelectionHint.Selected;
 
             if (hasTextFilter && !currentData.DisplaySuggestionItem)
@@ -294,6 +293,18 @@ namespace VSIntelliSenseTweaks
             //    return UpdateSelectionHint.Selected;
 
             return UpdateSelectionHint.SoftSelected;
+
+            bool IsSoftSelectionDisabled()
+            {
+                // User setting to disable soft-selection.
+                if (disableSoftSelection)
+                {
+                    // If the user prefers hard-selection, we can disable soft-selection under the following circumstances.
+                    return currentData.InitialTrigger.Reason == CompletionTriggerReason.InvokeAndCommitIfUnique
+                        || currentData.InitialTrigger.Character.Equals('.');
+                }
+                return false;
+            }
         }
 
         ImmutableArray<CompletionItemWithHighlight> CreateHighlightedCompletions(int n_eligibleCompletions)
