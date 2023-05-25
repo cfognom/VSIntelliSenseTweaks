@@ -93,7 +93,7 @@ namespace VSIntelliSenseTweaks.Utilities
             for (int i = 0; i < n_chars; i++)
             {
                 bool isSubwordBeginning = i == 0
-                  || ((!charKinds[i - 1].IsUpper || word[i - 1] == 'I') && charKinds[i].IsUpper)
+                  || ((!charKinds[i - 1].IsUpper || (i == 1 && word[i - 1] == 'I')) && charKinds[i].IsUpper)
                   || (!charKinds[i - 1].IsLetter && charKinds[i].IsLetter)
                   || (i + 1 < n_chars && charKinds[i].IsUpper && !charKinds[i + 1].IsUpper);
 
