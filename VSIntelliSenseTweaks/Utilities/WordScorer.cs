@@ -326,8 +326,17 @@ namespace VSIntelliSenseTweaks.Utilities
                     return false;
                 }
 
-                if (newSpan.IsSubwordStart && newSpan.EndInPattern > existingSpan.EndInPattern)
-                    return true;
+                if (newSpan.IsSubwordStart)
+                {
+                    if (newSpan.EndInPattern > existingSpan.EndInPattern)
+                        return true;
+
+                    if (newSpan.EndInPattern == existingSpan.EndInPattern
+                        && data_.word[newSpan.Start] == data_.pattern[newSpan.StartInPattern])
+                    {
+                        return true;
+                    }
+                }
 
                 return false;
             }
